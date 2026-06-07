@@ -1,6 +1,6 @@
-package com.ntg.CitizenLink.config;
+package com.ntg.CitizenLink.security.config;
 
-import com.ntg.CitizenLink.filter.JwtAuthenticationFilter;
+import com.ntg.CitizenLink.security.filter.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

@@ -1,4 +1,4 @@
-package com.ntg.CitizenLink.filter;
+package com.ntg.CitizenLink.security.filter;
 
 import com.ntg.CitizenLink.service.JwtService;
 import jakarta.servlet.FilterChain;

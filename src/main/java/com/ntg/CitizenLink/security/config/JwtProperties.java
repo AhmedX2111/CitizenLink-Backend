@@ -1,4 +1,4 @@
-package com.ntg.CitizenLink.config;
+package com.ntg.CitizenLink.security.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
