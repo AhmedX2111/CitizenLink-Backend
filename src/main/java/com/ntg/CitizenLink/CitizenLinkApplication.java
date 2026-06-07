@@ -1,6 +1,6 @@
 package com.ntg.CitizenLink;
 
-import com.ntg.CitizenLink.config.JwtProperties;
+import com.ntg.CitizenLink.security.config.JwtProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;

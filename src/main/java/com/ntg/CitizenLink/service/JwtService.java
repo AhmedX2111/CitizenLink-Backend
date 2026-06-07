@@ -1,6 +1,6 @@
 package com.ntg.CitizenLink.service;
 
-import com.ntg.CitizenLink.config.JwtProperties;
+import com.ntg.CitizenLink.security.config.JwtProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;

@@ -33,9 +33,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     private final AppUserRepository appUserRepository;
 
     @Override
-    @Cacheable(value = "users", key = "#username")
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        System.out.println("Loading from DATABASE: " + username); // Will only print once per user
+        System.out.println("Loading from DATABASE: " + username); // Debug: always load to avoid cache surprises
 
         AppUser appUser = appUserRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException(
