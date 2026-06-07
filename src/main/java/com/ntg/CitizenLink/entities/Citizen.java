@@ -1,6 +1,10 @@
 package com.ntg.CitizenLink.entities;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
@@ -17,6 +21,10 @@ import java.util.UUID;
         @Index(name = "idx_citizen_full_name", columnList = "full_name")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Citizen {
 
     @Id
@@ -58,36 +66,4 @@ public class Citizen {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "created_by_user_id", nullable = false, updatable = false)
     private AppUser createdByUser;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected Citizen() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public String getFullName() { return fullName; }
-    public void setFullName(String fullName) { this.fullName = fullName; }
-
-    public String getNationalId() { return nationalId; }
-    public void setNationalId(String nationalId) { this.nationalId = nationalId; }
-
-    public String getPhone() { return phone; }
-    public void setPhone(String phone) { this.phone = phone; }
-
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-
-    public String getPreferredLanguage() { return preferredLanguage; }
-    public void setPreferredLanguage(String preferredLanguage) { this.preferredLanguage = preferredLanguage; }
-
-    public OffsetDateTime getCreatedAt() { return createdAt; }
-
-    public AppUser getCreatedByUser() { return createdByUser; }
-    public void setCreatedByUser(AppUser createdByUser) { this.createdByUser = createdByUser; }
 }

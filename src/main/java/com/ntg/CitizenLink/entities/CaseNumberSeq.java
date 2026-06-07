@@ -1,6 +1,10 @@
 package com.ntg.CitizenLink.entities;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * Per-year sequence counter for generating human-readable case numbers
@@ -15,6 +19,10 @@ import jakarta.persistence.*;
  */
 @Entity
 @Table(name = "case_number_seq")
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class CaseNumberSeq {
 
     /**
@@ -27,23 +35,4 @@ public class CaseNumberSeq {
 
     @Column(name = "last_seq", nullable = false)
     private int lastSeq = 0;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected CaseNumberSeq() {}
-
-    public CaseNumberSeq(int year) {
-        this.year = year;
-    }
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public int getYear() { return year; }
-
-    public int getLastSeq() { return lastSeq; }
-    public void setLastSeq(int lastSeq) { this.lastSeq = lastSeq; }
 }

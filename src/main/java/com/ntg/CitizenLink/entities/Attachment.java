@@ -1,6 +1,10 @@
 package com.ntg.CitizenLink.entities;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
@@ -13,6 +17,10 @@ import java.util.UUID;
         @Index(name = "idx_attachment_case_id", columnList = "case_id")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Attachment {
 
     @Id
@@ -68,39 +76,4 @@ public class Attachment {
     @Column(name = "created_at", nullable = false, updatable = false,
             columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime createdAt;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected Attachment() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public Case getCaseEntity() { return caseEntity; }
-    public void setCaseEntity(Case caseEntity) { this.caseEntity = caseEntity; }
-
-    public String getOriginalFileName() { return originalFileName; }
-    public void setOriginalFileName(String originalFileName) { this.originalFileName = originalFileName; }
-
-    public String getStoredFileName() { return storedFileName; }
-    public void setStoredFileName(String storedFileName) { this.storedFileName = storedFileName; }
-
-    public String getMimeType() { return mimeType; }
-    public void setMimeType(String mimeType) { this.mimeType = mimeType; }
-
-    public long getFileSizeBytes() { return fileSizeBytes; }
-    public void setFileSizeBytes(long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
-
-    public String getStoragePath() { return storagePath; }
-    public void setStoragePath(String storagePath) { this.storagePath = storagePath; }
-
-    public AppUser getUploadedByUser() { return uploadedByUser; }
-    public void setUploadedByUser(AppUser uploadedByUser) { this.uploadedByUser = uploadedByUser; }
-
-    public OffsetDateTime getCreatedAt() { return createdAt; }
 }

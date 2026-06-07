@@ -1,6 +1,10 @@
 package com.ntg.CitizenLink.entities;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.util.UUID;
 
@@ -14,6 +18,10 @@ import java.util.UUID;
         @Index(name = "idx_category_active", columnList = "active")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Category {
 
     @Id
@@ -35,31 +43,4 @@ public class Category {
 
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected Category() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public String getCode() { return code; }
-    public void setCode(String code) { this.code = code; }
-
-    public String getNameEn() { return nameEn; }
-    public void setNameEn(String nameEn) { this.nameEn = nameEn; }
-
-    public String getNameAr() { return nameAr; }
-    public void setNameAr(String nameAr) { this.nameAr = nameAr; }
-
-    public boolean isActive() { return active; }
-    public void setActive(boolean active) { this.active = active; }
-
-    public int getSortOrder() { return sortOrder; }
-    public void setSortOrder(int sortOrder) { this.sortOrder = sortOrder; }
 }

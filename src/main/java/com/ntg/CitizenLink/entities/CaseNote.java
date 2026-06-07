@@ -1,6 +1,10 @@
 package com.ntg.CitizenLink.entities;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -14,6 +18,10 @@ import java.util.UUID;
         @Index(name = "idx_case_note_case_id", columnList = "case_id")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class CaseNote {
 
     @Id
@@ -49,31 +57,4 @@ public class CaseNote {
     @Column(name = "updated_at", nullable = false,
             columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime updatedAt;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected CaseNote() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public Case getCaseEntity() { return caseEntity; }
-    public void setCaseEntity(Case caseEntity) { this.caseEntity = caseEntity; }
-
-    public AppUser getAuthor() { return author; }
-    public void setAuthor(AppUser author) { this.author = author; }
-
-    public String getBody() { return body; }
-    public void setBody(String body) { this.body = body; }
-
-    public boolean isInternal() { return internal; }
-    public void setInternal(boolean internal) { this.internal = internal; }
-
-    public OffsetDateTime getCreatedAt() { return createdAt; }
-    public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

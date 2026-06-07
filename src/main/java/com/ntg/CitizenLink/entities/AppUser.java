@@ -3,6 +3,10 @@ package com.ntg.CitizenLink.entities;
 
 import com.ntg.CitizenLink.enums.UserRole;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -21,6 +25,10 @@ import java.util.UUID;
         @Index(name = "idx_app_user_active", columnList = "active")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class AppUser {
 
     @Id
@@ -60,36 +68,4 @@ public class AppUser {
             columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime updatedAt;
 
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected AppUser() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public String getUsername() { return username; }
-    public void setUsername(String username) { this.username = username; }
-
-    public String getPasswordHash() { return passwordHash; }
-    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
-
-    public String getDisplayName() { return displayName; }
-    public void setDisplayName(String displayName) { this.displayName = displayName; }
-
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-
-    public UserRole getRole() { return role; }
-    public void setRole(UserRole role) { this.role = role; }
-
-    public boolean isActive() { return active; }
-    public void setActive(boolean active) { this.active = active; }
-
-    public OffsetDateTime getCreatedAt() { return createdAt; }
-    public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

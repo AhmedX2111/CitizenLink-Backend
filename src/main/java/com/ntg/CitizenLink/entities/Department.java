@@ -1,6 +1,10 @@
 package com.ntg.CitizenLink.entities;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.util.UUID;
 
@@ -11,6 +15,10 @@ import java.util.UUID;
         @UniqueConstraint(name = "uq_department_code", columnNames = "code")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Department {
 
     @Id
@@ -29,28 +37,4 @@ public class Department {
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected Department() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public String getCode() { return code; }
-    public void setCode(String code) { this.code = code; }
-
-    public String getNameEn() { return nameEn; }
-    public void setNameEn(String nameEn) { this.nameEn = nameEn; }
-
-    public String getNameAr() { return nameAr; }
-    public void setNameAr(String nameAr) { this.nameAr = nameAr; }
-
-    public boolean isActive() { return active; }
-    public void setActive(boolean active) { this.active = active; }
 }

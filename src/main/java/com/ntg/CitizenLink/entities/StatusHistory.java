@@ -3,6 +3,10 @@ package com.ntg.CitizenLink.entities;
 import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.enums.WorkflowAction;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
@@ -26,6 +30,10 @@ import java.util.UUID;
         @Index(name = "idx_status_history_created_at", columnList = "created_at")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class StatusHistory {
 
     @Id
@@ -67,36 +75,4 @@ public class StatusHistory {
     @Column(name = "created_at", nullable = false, updatable = false,
             columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime createdAt;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected StatusHistory() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public Case getCaseEntity() { return caseEntity; }
-    public void setCaseEntity(Case caseEntity) { this.caseEntity = caseEntity; }
-
-    public CaseStatus getFromStatus() { return fromStatus; }
-    public void setFromStatus(CaseStatus fromStatus) { this.fromStatus = fromStatus; }
-
-    public CaseStatus getToStatus() { return toStatus; }
-    public void setToStatus(CaseStatus toStatus) { this.toStatus = toStatus; }
-
-    public WorkflowAction getAction() { return action; }
-    public void setAction(WorkflowAction action) { this.action = action; }
-
-    public AppUser getChangedByUser() { return changedByUser; }
-    public void setChangedByUser(AppUser changedByUser) { this.changedByUser = changedByUser; }
-
-    public String getComment() { return comment; }
-    public void setComment(String comment) { this.comment = comment; }
-
-    public OffsetDateTime getCreatedAt() { return createdAt; }
 }

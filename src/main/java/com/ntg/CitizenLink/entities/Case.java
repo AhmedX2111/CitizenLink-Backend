@@ -3,6 +3,10 @@ package com.ntg.CitizenLink.entities;
 
 import jakarta.persistence.*;
 import com.ntg.CitizenLink.enums.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -26,6 +30,10 @@ import java.util.UUID;
         @Index(name = "idx_cases_due_at",              columnList = "due_at")
     }
 )
+@Setter
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Case {
 
     @Id
@@ -133,67 +141,4 @@ public class Case {
      */
     @Column(name = "closed_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime closedAt;
-
-    // -------------------------------------------------------------------------
-    // Constructors
-    // -------------------------------------------------------------------------
-
-    protected Case() {}
-
-    // -------------------------------------------------------------------------
-    // Getters & Setters
-    // -------------------------------------------------------------------------
-
-    public UUID getId() { return id; }
-
-    public String getCaseNumber() { return caseNumber; }
-    public void setCaseNumber(String caseNumber) { this.caseNumber = caseNumber; }
-
-    public String getSubject() { return subject; }
-    public void setSubject(String subject) { this.subject = subject; }
-
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-
-    public CaseType getType() { return type; }
-    public void setType(CaseType type) { this.type = type; }
-
-    public Priority getPriority() { return priority; }
-    public void setPriority(Priority priority) { this.priority = priority; }
-
-    public CaseStatus getStatus() { return status; }
-    public void setStatus(CaseStatus status) { this.status = status; }
-
-    public Channel getChannel() { return channel; }
-    public void setChannel(Channel channel) { this.channel = channel; }
-
-    public String getResolutionSummary() { return resolutionSummary; }
-    public void setResolutionSummary(String resolutionSummary) { this.resolutionSummary = resolutionSummary; }
-
-    public OffsetDateTime getDueAt() { return dueAt; }
-    public void setDueAt(OffsetDateTime dueAt) { this.dueAt = dueAt; }
-
-    public Citizen getCitizen() { return citizen; }
-    public void setCitizen(Citizen citizen) { this.citizen = citizen; }
-
-    public Category getCategory() { return category; }
-    public void setCategory(Category category) { this.category = category; }
-
-    public Department getDepartment() { return department; }
-    public void setDepartment(Department department) { this.department = department; }
-
-    public AppUser getCreatedByUser() { return createdByUser; }
-    public void setCreatedByUser(AppUser createdByUser) { this.createdByUser = createdByUser; }
-
-    public AppUser getAssignedToUser() { return assignedToUser; }
-    public void setAssignedToUser(AppUser assignedToUser) { this.assignedToUser = assignedToUser; }
-
-    public OffsetDateTime getCreatedAt() { return createdAt; }
-    public OffsetDateTime getUpdatedAt() { return updatedAt; }
-
-    public OffsetDateTime getResolvedAt() { return resolvedAt; }
-    public void setResolvedAt(OffsetDateTime resolvedAt) { this.resolvedAt = resolvedAt; }
-
-    public OffsetDateTime getClosedAt() { return closedAt; }
-    public void setClosedAt(OffsetDateTime closedAt) { this.closedAt = closedAt; }
 }
