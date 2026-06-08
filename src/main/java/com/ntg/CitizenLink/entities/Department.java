@@ -36,5 +36,5 @@ public class Department {
     private String nameAr;
 
     @Column(name = "active", nullable = false)
-    private boolean active = true;
+    private Boolean active = true;
 }

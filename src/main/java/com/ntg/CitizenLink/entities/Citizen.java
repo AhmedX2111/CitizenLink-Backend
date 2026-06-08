@@ -15,7 +15,8 @@ import java.util.UUID;
     name = "citizen",
     uniqueConstraints = {
         @UniqueConstraint(name = "uq_citizen_national_id", columnNames = "national_id"),
-        @UniqueConstraint(name = "uq_citizen_phone",       columnNames = "phone")
+        @UniqueConstraint(name = "uq_citizen_phone",       columnNames = "phone"),
+        @UniqueConstraint(name = "uq_citizen_email",       columnNames = "email")
     },
     indexes = {
         @Index(name = "idx_citizen_full_name", columnList = "full_name")
@@ -45,7 +46,7 @@ public class Citizen {
      * Nullable but unique — two citizens cannot share the same phone number.
      * PostgreSQL treats each NULL as distinct, so multiple NULLs are allowed.
      */
-    @Column(name = "phone", length = 30)
+    @Column(name = "phone", length = 11)
     private String phone;
 
     @Column(name = "email", length = 255)

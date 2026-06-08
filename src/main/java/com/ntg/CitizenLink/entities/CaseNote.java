@@ -46,7 +46,7 @@ public class CaseNote {
      * Defaults to true for safety.
      */
     @Column(name = "internal", nullable = false)
-    private boolean internal = true;
+    private Boolean internal = true;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false,
