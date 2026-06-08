@@ -39,7 +39,7 @@ public class Category {
     private String nameAr;
 
     @Column(name = "active", nullable = false)
-    private boolean active = true;
+    private Boolean active = true;
 
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
