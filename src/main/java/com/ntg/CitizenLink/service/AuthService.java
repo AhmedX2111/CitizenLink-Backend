@@ -1,10 +1,12 @@
 package com.ntg.CitizenLink.service;
 
 import com.ntg.CitizenLink.dto.AuthResponse;
+import com.ntg.CitizenLink.dto.EncryptedAuthResponse;
 import com.ntg.CitizenLink.dto.LoginRequest;
 import com.ntg.CitizenLink.entities.AppUser;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -17,6 +19,7 @@ import java.util.Map;
  * Handles authentication business logic.
  * Keeping this out of the controller makes the controller thin and testable.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -25,20 +28,14 @@ public class AuthService {
     private final AppUserRepository      appUserRepository;
     private final UserDetailsService     userDetailsService;
     private final JwtService             jwtService;
-
-    // -------------------------------------------------------------------------
-    // Login
-    // -------------------------------------------------------------------------
+    private final IdEncryptionService    idEncryptionService;
 
     /**
-     * Authenticates credentials and returns a signed JWT + user profile.
-     *
-     * authenticate() will throw:
-     *   - BadCredentialsException   if username/password is wrong
-     *   - DisabledException         if AppUser.active = false
-     * Both propagate as 401 (handled by Spring Security's default error response).
+     * Authenticates credentials and returns a signed JWT + user profile with encrypted ID.
      */
-    public AuthResponse login(LoginRequest request) {
+    public EncryptedAuthResponse login(LoginRequest request) {
+        log.debug("Login attempt for user: {}", request.username());
+
         // 1. Delegate credential check to Spring Security
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
@@ -49,7 +46,7 @@ public class AuthService {
 
         // 2. Credentials OK — load full entity for the response body
         AppUser user = appUserRepository.findByUsername(request.username())
-                .orElseThrow(); // can't reach here if authenticate() succeeded
+                .orElseThrow();
 
         // 3. Embed role claim so the filter never needs a DB call to check roles
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
@@ -58,21 +55,28 @@ public class AuthService {
                 Map.of("role", user.getRole().name())
         );
 
-        return toAuthResponse(token, user);
+        // 4. Create response with encrypted ID
+        AuthResponse authResponse = toAuthResponse(token, user);
+        String encryptedId = idEncryptionService.encryptId(user.getId());
+
+        log.debug("Login successful for user: {}, ID encrypted", user.getUsername());
+
+        return EncryptedAuthResponse.fromAuthResponse(authResponse, encryptedId);
     }
 
-    // -------------------------------------------------------------------------
-    // Current user (/auth/me)
-    // -------------------------------------------------------------------------
-
     /**
-     * Returns the authenticated user's profile without re-issuing a token.
-     * The username comes from SecurityContextHolder (populated by the filter).
+     * Returns the authenticated user's profile with encrypted ID.
      */
-    public AuthResponse getCurrentUser(String username) {
+    public EncryptedAuthResponse getCurrentUser(String username) {
         AppUser user = appUserRepository.findByUsername(username)
                 .orElseThrow();
-        return toAuthResponse(null, user);  // token = null on /me
+
+        AuthResponse authResponse = toAuthResponse(null, user);
+        String encryptedId = idEncryptionService.encryptId(user.getId());
+
+        log.debug("Returning current user with encrypted ID: {}", user.getUsername());
+
+        return EncryptedAuthResponse.fromAuthResponse(authResponse, encryptedId);
     }
 
     // -------------------------------------------------------------------------
