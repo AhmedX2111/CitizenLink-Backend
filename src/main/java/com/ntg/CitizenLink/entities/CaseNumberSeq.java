@@ -35,4 +35,8 @@ public class CaseNumberSeq {
 
     @Column(name = "last_seq", nullable = false)
     private int lastSeq = 0;
+
+    public CaseNumberSeq(int year) {
+        this.year = year;
+    }
 }
