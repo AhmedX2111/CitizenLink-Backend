@@ -12,6 +12,7 @@ import java.util.Arrays;
 
 @Configuration
 public class CorsConfig {
+    // to do encrypt and decrypt ids of users
 
     @Bean
     public WebMvcConfigurer corsConfigurer() {
