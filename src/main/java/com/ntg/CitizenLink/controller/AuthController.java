@@ -3,6 +3,8 @@ package com.ntg.CitizenLink.controller;
 import com.ntg.CitizenLink.dto.AuthResponse;
 import com.ntg.CitizenLink.dto.EncryptedAuthResponse;
 import com.ntg.CitizenLink.dto.LoginRequest;
+import com.ntg.CitizenLink.enums.ActionStatus;
+import com.ntg.CitizenLink.enums.EventType;
 import com.ntg.CitizenLink.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,12 @@ public class AuthController {
     public ResponseEntity<EncryptedAuthResponse> login(@Valid @RequestBody LoginRequest request) {
         log.debug("Login request received for user: {}", request.username());
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@AuthenticationPrincipal UserDetails userDetails) {
+        authService.logout(userDetails);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/me")
