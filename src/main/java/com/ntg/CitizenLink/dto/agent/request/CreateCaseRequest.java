@@ -12,14 +12,6 @@ import lombok.Setter;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/**
- * Request body for POST /api/v1/cases.
- *
- * SECURITY NOTE: `status` is intentionally absent from this DTO.
- * Status is always set to NEW by CaseService and must never be
- * accepted from the request body. See ERD design risk: "Status written
- * directly from API body — CRITICAL".
- */
 @Setter
 @Getter
 public class CreateCaseRequest {
@@ -40,8 +32,9 @@ public class CreateCaseRequest {
     @NotNull(message = "Channel is required")
     private Channel channel;
 
-    @NotNull(message = "Citizen ID is required")
-    private UUID citizenId;
+    @NotBlank(message = "Citizen National ID is required")
+    @Size(min = 10, max = 50, message = "National ID must be between 10-50 characters")
+    private String citizenNationalId;
 
     @NotNull(message = "Category ID is required")
     private UUID categoryId;
@@ -49,9 +42,6 @@ public class CreateCaseRequest {
     @NotNull(message = "Department ID is required")
     private UUID departmentId;
 
-    /** Optional at creation. Supervisor assigns later via workflow. */
     private UUID assignedToUserId;
-
-    /** Optional SLA deadline. */
     private OffsetDateTime dueAt;
 }

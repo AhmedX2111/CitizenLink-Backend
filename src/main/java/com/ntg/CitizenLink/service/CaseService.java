@@ -76,8 +76,8 @@ public class CaseService {
         AppUser creator = userRepository.findById(creatorId)
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", creatorId));
 
-        Citizen citizen = citizenRepository.findById(request.getCitizenId())
-                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", request.getCitizenId()));
+        Citizen citizen = citizenRepository.findByNationalId(request.getCitizenNationalId())
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen with National ID", request.getCitizenNationalId()));
 
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> ResourceNotFoundException.of("Category", request.getCategoryId()));
