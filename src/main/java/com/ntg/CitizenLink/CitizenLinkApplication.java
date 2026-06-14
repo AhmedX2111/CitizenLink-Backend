@@ -10,9 +10,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableConfigurationProperties(JwtProperties.class)
-@EnableCaching
-@EnableAsync
-@EnableScheduling
 public class CitizenLinkApplication {
 
 	public static void main(String[] args) {

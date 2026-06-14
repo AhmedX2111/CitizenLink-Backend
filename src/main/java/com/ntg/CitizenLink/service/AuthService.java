@@ -33,7 +33,6 @@ public class AuthService {
     private final UserDetailsService userDetailsService;
     private final JwtService jwtService;
     private final IdEncryptionService idEncryptionService;
-    private final AuditLogService auditLogService;
 
     /**
      * Authenticates credentials and returns a signed JWT + user profile with encrypted ID.
@@ -54,15 +53,9 @@ public class AuthService {
             AppUser user = appUserRepository.findByUsername(request.username())
                     .orElseThrow();
 
-            // Log successful login
-            auditLogService.logAuthenticationEvent(
-                    EventType.LOGIN_SUCCESS,
-                    user.getUsername(),
-                    user.getId(),
-                    user.getRole().name(),
-                    ActionStatus.SUCCESS,
-                    null
-            );
+            // REPLACED: auditLogService with structured JSON logging
+            log.info("AUTH EVENT: LOGIN_SUCCESS | username={} | userId={} | role={} | status=SUCCESS",
+                    user.getUsername(), user.getId(), user.getRole().name());
 
             // 3. Embed role claim
             UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
@@ -80,41 +73,23 @@ public class AuthService {
             return EncryptedAuthResponse.fromAuthResponse(authResponse, encryptedId);
 
         } catch (BadCredentialsException e) {
-            // Log failed login - wrong password
-            auditLogService.logAuthenticationEvent(
-                    EventType.LOGIN_FAILURE,
-                    request.username(),
-                    null,
-                    null,
-                    ActionStatus.FAILED,
-                    "Bad credentials - Invalid password"
-            );
+            // REPLACED: auditLogService with structured JSON logging
+            log.warn("AUTH EVENT: LOGIN_FAILURE | username={} | reason=Bad credentials | status=FAILED",
+                    request.username());
             log.warn("Login failed for user: {} - Bad credentials", request.username());
             throw e;
 
         } catch (DisabledException e) {
-            // Log failed login - account disabled
-            auditLogService.logAuthenticationEvent(
-                    EventType.LOGIN_FAILURE,
-                    request.username(),
-                    null,
-                    null,
-                    ActionStatus.FAILED,
-                    "Account is disabled/inactive"
-            );
+            // REPLACED: auditLogService with structured JSON logging
+            log.warn("AUTH EVENT: LOGIN_FAILURE | username={} | reason=Account is disabled/inactive | status=FAILED",
+                    request.username());
             log.warn("Login failed for user: {} - Account disabled", request.username());
             throw e;
 
         } catch (Exception e) {
-            // Log failed login - other errors
-            auditLogService.logAuthenticationEvent(
-                    EventType.LOGIN_FAILURE,
-                    request.username(),
-                    null,
-                    null,
-                    ActionStatus.FAILED,
-                    "Login error: " + e.getClass().getSimpleName()
-            );
+            // REPLACED: auditLogService with structured JSON logging
+            log.error("AUTH EVENT: LOGIN_FAILURE | username={} | reason={} | status=FAILED",
+                    request.username(), e.getClass().getSimpleName());
             log.error("Login error for user: {}", request.username(), e);
             throw e;
         }
@@ -126,14 +101,8 @@ public class AuthService {
      */
     public void logout(UserDetails userDetails) {
         if (userDetails != null) {
-            auditLogService.logAuthenticationEvent(
-                    EventType.LOGOUT,
-                    userDetails.getUsername(),
-                    null,
-                    null,
-                    ActionStatus.SUCCESS,
-                    null
-            );
+            // REPLACED: auditLogService with structured JSON logging
+            log.info("AUTH EVENT: LOGOUT | username={} | status=SUCCESS", userDetails.getUsername());
             log.info("User logged out: {}", userDetails.getUsername());
         }
     }
