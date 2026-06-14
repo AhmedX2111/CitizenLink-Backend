@@ -32,19 +32,39 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<EncryptedAuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        log.debug("Login request received for user: {}", request.username());
-        return ResponseEntity.ok(authService.login(request));
+        log.info("REST request: POST /api/v1/auth/login - username: {}", request.username());
+        log.debug("Login request details - method: POST, endpoint: /login, username: {}", request.username());
+
+        long startTime = System.currentTimeMillis();
+        EncryptedAuthResponse response = authService.login(request);
+        long duration = System.currentTimeMillis() - startTime;
+
+        log.info("REST response: POST /api/v1/auth/login - status: 200 OK, duration: {}ms", duration);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(@AuthenticationPrincipal UserDetails userDetails) {
+        String username = userDetails != null ? userDetails.getUsername() : "unknown";
+        log.info("REST request: POST /api/v1/auth/logout - username: {}", username);
+
         authService.logout(userDetails);
+
+        log.info("REST response: POST /api/v1/auth/logout - status: 200 OK");
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/me")
     public ResponseEntity<EncryptedAuthResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
-        log.debug("Get current user request for: {}", userDetails.getUsername());
-        return ResponseEntity.ok(authService.getCurrentUser(userDetails.getUsername()));
+        String username = userDetails != null ? userDetails.getUsername() : "unknown";
+        log.info("REST request: GET /api/v1/auth/me - username: {}", username);
+        log.debug("Fetching current user profile for: {}", username);
+
+        long startTime = System.currentTimeMillis();
+        EncryptedAuthResponse response = authService.getCurrentUser(userDetails.getUsername());
+        long duration = System.currentTimeMillis() - startTime;
+
+        log.info("REST response: GET /api/v1/auth/me - status: 200 OK, duration: {}ms", duration);
+        return ResponseEntity.ok(response);
     }
 }
