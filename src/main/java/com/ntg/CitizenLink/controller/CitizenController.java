@@ -1,13 +1,20 @@
 package com.ntg.CitizenLink.controller;
 
 import com.ntg.CitizenLink.dto.agent.request.CitizenSearchRequest;
+import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenSearchResponse;
+import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.service.CitizenService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -19,44 +26,62 @@ import java.util.UUID;
 public class CitizenController {
 
     private final CitizenService citizenService;
+    private final AppUserRepository appUserRepository;
 
     /**
      * US-07: Search for a citizen
-     * Search by national ID, phone number, or partial name
      */
     @GetMapping("/search")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
-    public ResponseEntity<CitizenSearchResponse<CitizenResponse>> searchCitizens(
+    public ResponseEntity<Page<CitizenResponse>> searchCitizens(
             @RequestParam(required = false) String searchTerm,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        log.info("REST request: GET /api/v1/citizens/search - searchTerm: {}, page: {}, size: {}", searchTerm, page, size);
+        log.info("GET /api/v1/citizens/search - searchTerm: {}, page: {}, size: {}", searchTerm, page, size);
 
         CitizenSearchRequest request = new CitizenSearchRequest();
         request.setSearchTerm(searchTerm);
         request.setPage(page);
         request.setSize(size);
 
-        CitizenSearchResponse<CitizenResponse> response = citizenService.searchCitizens(request);
-
-        log.info("REST response: GET /api/v1/citizens/search - returned {} citizens",
-                response.getContent() != null ? response.getContent().size() : 0);
+        Page<CitizenResponse> response = citizenService.searchCitizens(request);
 
         return ResponseEntity.ok(response);
     }
 
     /**
-     * Get citizen by ID (for Citizen 360 - US-08)
+     * US-09: Create a new citizen record
+     */
+    @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
+    public ResponseEntity<CitizenResponse> createCitizen(
+            @Valid @RequestBody CreateCitizenRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        log.info("POST /api/v1/citizens - nationalId: {}, createdBy: {}",
+                request.getNationalId(), userDetails.getUsername());
+
+        // Get user ID from authenticated user
+        UUID userId = appUserRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("User not found: " + userDetails.getUsername()))
+                .getId();
+
+        CitizenResponse response = citizenService.createCitizen(request, userId);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * US-08: Get citizen by ID (Citizen 360)
      */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
     public ResponseEntity<CitizenResponse> getCitizenById(@PathVariable UUID id) {
-        log.info("REST request: GET /api/v1/citizens/{}", id);
+        log.info("GET /api/v1/citizens/{}", id);
 
         CitizenResponse response = citizenService.getCitizenById(id);
 
-        log.info("REST response: GET /api/v1/citizens/{} - citizen found", id);
         return ResponseEntity.ok(response);
     }
 }

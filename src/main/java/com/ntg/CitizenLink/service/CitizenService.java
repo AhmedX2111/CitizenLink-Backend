@@ -1,9 +1,14 @@
 package com.ntg.CitizenLink.service;
 
+import com.ntg.CitizenLink.GEH.DuplicateResourceException;
+import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
 import com.ntg.CitizenLink.dto.agent.request.CitizenSearchRequest;
+import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenSearchResponse;
+import com.ntg.CitizenLink.entities.AppUser;
 import com.ntg.CitizenLink.entities.Citizen;
+import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.repositories.CitizenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,55 +28,79 @@ import java.util.stream.Collectors;
 public class CitizenService {
 
     private final CitizenRepository citizenRepository;
+    private final AppUserRepository appUserRepository;
 
     /**
      * Search citizens by name (partial), national ID, or phone
-     * Returns paginated results
      */
     @Transactional(readOnly = true)
-    public CitizenSearchResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
+    public Page<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
         log.info("Searching citizens with term: '{}'", request.getSearchTerm());
 
-        // Validate search term
         if (request.isEmpty()) {
             log.warn("Empty search term provided");
-            return new CitizenSearchResponse<>(
-                    List.of(),
-                    0,
-                    request.getSize(),
-                    0,
-                    0,
-                    true,
-                    true
-            );
+            return Page.empty();
         }
 
-        // Create pageable
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
 
-        // Execute search
         Page<Citizen> citizenPage = citizenRepository.searchCitizens(
                 request.getSearchTerm().trim(),
                 pageable
         );
 
-        // Convert to response DTO
-        List<CitizenResponse> content = citizenPage.getContent()
-                .stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return citizenPage.map(this::toResponse);
+    }
 
-        log.info("Found {} citizens for search term: '{}'", citizenPage.getTotalElements(), request.getSearchTerm());
+    /**
+     * US-09: Create a new citizen record
+     */
+    @Transactional
+    public CitizenResponse createCitizen(CreateCitizenRequest request, UUID createdByUserId) {
+        log.info("Creating new citizen with national ID: {}", request.getNationalId());
 
-        return new CitizenSearchResponse<>(
-                content,
-                citizenPage.getNumber(),
-                citizenPage.getSize(),
-                citizenPage.getTotalElements(),
-                citizenPage.getTotalPages(),
-                citizenPage.isFirst(),
-                citizenPage.isLast()
-        );
+        // Check for duplicate national ID
+        if (citizenRepository.existsByNationalId(request.getNationalId())) {
+            log.warn("Duplicate national ID: {}", request.getNationalId());
+            throw new DuplicateResourceException("Citizen", "national ID", request.getNationalId());
+        }
+
+        // Check for duplicate phone
+        if (citizenRepository.existsByPhone(request.getPhone())) {
+            log.warn("Duplicate phone number: {}", request.getPhone());
+            throw new DuplicateResourceException("Citizen", "phone number", request.getPhone());
+        }
+
+        // Process email: convert empty string to null
+        String email = request.getEmail();
+        if (email != null && email.trim().isEmpty()) {
+            email = null;  // Convert empty string to NULL for database
+        }
+
+        // Check for duplicate email (only if email is not null)
+        if (email != null && citizenRepository.existsByEmail(email)) {
+            log.warn("Duplicate email: {}", email);
+            throw new DuplicateResourceException("Citizen", "email", email);
+        }
+
+        // Get the creating user - using the factory method
+        AppUser createdBy = appUserRepository.findById(createdByUserId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", createdByUserId));
+
+        // Create new citizen entity
+        Citizen citizen = new Citizen();
+        citizen.setFullName(request.getFullName());
+        citizen.setNationalId(request.getNationalId());
+        citizen.setPhone(request.getPhone());
+        citizen.setEmail(email);  // Use the processed email (null if empty)
+        citizen.setPreferredLanguage(request.getPreferredLanguage() != null ? request.getPreferredLanguage() : "en");
+        citizen.setCreatedByUser(createdBy);
+
+        Citizen savedCitizen = citizenRepository.save(citizen);
+
+        log.info("Citizen created successfully with ID: {}", savedCitizen.getId());
+
+        return toResponse(savedCitizen);
     }
 
     /**
@@ -82,7 +111,7 @@ public class CitizenService {
         log.info("Fetching citizen by ID: {}", id);
 
         Citizen citizen = citizenRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Citizen not found with id: " + id));
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", id));
 
         return toResponse(citizen);
     }
