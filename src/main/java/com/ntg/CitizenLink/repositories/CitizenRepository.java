@@ -14,7 +14,12 @@ import java.util.UUID;
 
 @Repository
 public interface CitizenRepository extends JpaRepository<Citizen, UUID> {
+
     boolean existsByNationalId(String nationalId);
+
+    boolean existsByPhone(String phone);
+
+    boolean existsByEmail(String email);
 
     Optional<Citizen> findByNationalId(String nationalId);
 
@@ -28,6 +33,6 @@ public interface CitizenRepository extends JpaRepository<Citizen, UUID> {
     Page<Citizen> searchCitizens(@Param("searchTerm") String searchTerm, Pageable pageable);
 
     // Count cases for a citizen (for response)
-    @Query("SELECT COUNT(case) FROM Case case WHERE case.citizen.id = :citizenId")
+    @Query("SELECT COUNT(caseEntity) FROM Case caseEntity WHERE caseEntity.citizen.id = :citizenId")
     long countCasesByCitizenId(@Param("citizenId") UUID citizenId);
 }

@@ -47,10 +47,41 @@ public class GlobalExceptionHandler {
     }
 
     // -------------------------------------------------------------------------
+    // 409 Conflict - Duplicate Resource
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateResource(DuplicateResourceException ex) {
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.CONFLICT.value(),
+                ex.getMessage(),
+                null,
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - General business rule violations
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                ex.getMessage(),
+                null,
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    // -------------------------------------------------------------------------
     // Generic fallback
     // -------------------------------------------------------------------------
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
+        // Log the exception for debugging
+        ex.printStackTrace();
+
         ErrorResponse body = new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "An unexpected error occurred",
