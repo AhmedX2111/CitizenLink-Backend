@@ -4,11 +4,15 @@ import com.ntg.CitizenLink.GEH.DuplicateResourceException;
 import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
 import com.ntg.CitizenLink.dto.agent.request.CitizenSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
+import com.ntg.CitizenLink.dto.agent.response.CaseSummaryResponse;
+import com.ntg.CitizenLink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
-import com.ntg.CitizenLink.dto.agent.response.CitizenSearchResponse;
 import com.ntg.CitizenLink.entities.AppUser;
+import com.ntg.CitizenLink.entities.Case;
 import com.ntg.CitizenLink.entities.Citizen;
+import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
+import com.ntg.CitizenLink.repositories.CaseRepository;
 import com.ntg.CitizenLink.repositories.CitizenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +33,7 @@ public class CitizenService {
 
     private final CitizenRepository citizenRepository;
     private final AppUserRepository appUserRepository;
+    private final CaseRepository caseRepository;
 
     /**
      * Search citizens by name (partial), national ID, or phone
@@ -104,6 +109,57 @@ public class CitizenService {
     }
 
     /**
+     * US-08: Get citizen profile with case history
+     */
+    @Transactional(readOnly = true)
+    public CitizenProfileResponse getCitizen360(UUID id) {
+        log.info("Fetching citizen profile for ID: {}", id);
+
+        // Get citizen
+        Citizen citizen = citizenRepository.findById(id)
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", id));
+
+        // Get case statistics - Use CaseStatus enum
+        long totalCases = caseRepository.countByCitizenId(id);
+
+        // Pass CaseStatus enum values instead of strings
+        long openCases = caseRepository.countByCitizenIdAndStatusNotIn(id,
+                List.of(
+                        CaseStatus.RESOLVED,
+                        CaseStatus.CLOSED,
+                        CaseStatus.CANCELLED
+                ));
+
+        long resolvedCases = caseRepository.countByCitizenIdAndStatusIn(id,
+                List.of(
+                        CaseStatus.RESOLVED,
+                        CaseStatus.CLOSED
+                ));
+
+        // Get recent cases (last 5)
+        List<Case> recentCases = caseRepository.findTop5ByCitizenIdOrderByCreatedAtDesc(id);
+
+        // Build response
+        return CitizenProfileResponse.builder()
+                .id(citizen.getId())
+                .fullName(citizen.getFullName())
+                .nationalId(citizen.getNationalId())
+                .phone(citizen.getPhone())
+                .email(citizen.getEmail())
+                .preferredLanguage(citizen.getPreferredLanguage())
+                .createdAt(citizen.getCreatedAt())
+                .createdByUserName(citizen.getCreatedByUser() != null ?
+                        citizen.getCreatedByUser().getDisplayName() : null)
+                .totalCases((int) totalCases)
+                .openCases((int) openCases)
+                .resolvedCases((int) resolvedCases)
+                .recentCases(recentCases.stream()
+                        .map(this::toCaseSummary)
+                        .collect(Collectors.toList()))
+                .build();
+    }
+
+    /**
      * Get citizen by ID with case count
      */
     @Transactional(readOnly = true)
@@ -131,6 +187,22 @@ public class CitizenService {
                 .preferredLanguage(citizen.getPreferredLanguage())
                 .createdAt(citizen.getCreatedAt())
                 .caseCount((int) caseCount)
+                .build();
+    }
+
+    /**
+     * Convert Case to CaseSummaryResponse
+     */
+    private CaseSummaryResponse toCaseSummary(Case caseEntity) {
+        return CaseSummaryResponse.builder()
+                .id(caseEntity.getId())
+                .caseNumber(caseEntity.getCaseNumber())
+                .subject(caseEntity.getSubject())
+                .status(caseEntity.getStatus() != null ? caseEntity.getStatus().name() : null)
+                .priority(caseEntity.getPriority() != null ? caseEntity.getPriority().name() : null)
+                .createdAt(caseEntity.getCreatedAt())
+                .assignedToName(caseEntity.getAssignedToUser() != null ?
+                        caseEntity.getAssignedToUser().getDisplayName() : null)
                 .build();
     }
 }

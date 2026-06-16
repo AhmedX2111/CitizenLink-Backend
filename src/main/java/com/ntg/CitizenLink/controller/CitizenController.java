@@ -2,8 +2,8 @@ package com.ntg.CitizenLink.controller;
 
 import com.ntg.CitizenLink.dto.agent.request.CitizenSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
+import com.ntg.CitizenLink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
-import com.ntg.CitizenLink.dto.agent.response.CitizenSearchResponse;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.service.CitizenService;
 import jakarta.validation.Valid;
@@ -73,7 +73,20 @@ public class CitizenController {
     }
 
     /**
-     * US-08: Get citizen by ID (Citizen 360)
+     * US-08: Get citizen 360 profile with case history
+     */
+    @GetMapping("/profile/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
+    public ResponseEntity<CitizenProfileResponse> getCitizen360(@PathVariable UUID id) {
+        log.info("GET /api/v1/citizens/{}/360", id);
+
+        CitizenProfileResponse response = citizenService.getCitizen360(id);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get citizen by ID (basic profile)
      */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")

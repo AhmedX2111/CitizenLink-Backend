@@ -2,10 +2,14 @@ package com.ntg.CitizenLink.repositories;
 
 
 import com.ntg.CitizenLink.entities.Case;
+import com.ntg.CitizenLink.enums.CaseStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -21,8 +25,21 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
 
     /**
      * Checks for duplicate case_number before insert.
-     * Used inside CaseService to verify the generated number is unique
-     * (extremely unlikely to collide, but verified for safety).
      */
     boolean existsByCaseNumber(String caseNumber);
+
+    // Count total cases for a citizen
+    long countByCitizenId(UUID citizenId);
+
+    // Count cases with status not in specified list - Use CaseStatus enum
+    @Query("SELECT COUNT(c) FROM Case c WHERE c.citizen.id = :citizenId AND c.status NOT IN :statuses")
+    long countByCitizenIdAndStatusNotIn(@Param("citizenId") UUID citizenId, @Param("statuses") List<CaseStatus> statuses);
+
+    // Count cases with status in specified list - Use CaseStatus enum
+    @Query("SELECT COUNT(c) FROM Case c WHERE c.citizen.id = :citizenId AND c.status IN :statuses")
+    long countByCitizenIdAndStatusIn(@Param("citizenId") UUID citizenId, @Param("statuses") List<CaseStatus> statuses);
+
+    // Get recent cases for a citizen
+    @Query("SELECT c FROM Case c WHERE c.citizen.id = :citizenId ORDER BY c.createdAt DESC")
+    List<Case> findTop5ByCitizenIdOrderByCreatedAtDesc(@Param("citizenId") UUID citizenId);
 }
