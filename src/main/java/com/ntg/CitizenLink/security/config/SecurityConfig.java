@@ -87,6 +87,10 @@ public class SecurityConfig {
                         // Reports — ADMIN and SUPERVISOR (BRD §4.3)
                         .requestMatchers("/api/v1/reports/**").hasAnyRole("ADMIN", "SUPERVISOR")
 
+                        // Dashboard — any authenticated role; fine-grained role checks
+                        // (e.g. HANDLER-only my-open-cases) enforced via @PreAuthorize
+                        .requestMatchers("/api/v1/dashboard/**").authenticated()
+
                         // ── Everything else requires a valid token ─────────────────
                         .anyRequest().authenticated()
                 )
