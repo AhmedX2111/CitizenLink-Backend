@@ -1,4 +1,4 @@
-package com.ntg.CitizenLink.service;
+package com.ntg.CitizenLink.service.mapper;
 
 
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;

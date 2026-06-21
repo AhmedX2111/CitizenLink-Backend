@@ -5,7 +5,7 @@ import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.CitizenLink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
-import com.ntg.CitizenLink.service.CitizenService;
+import com.ntg.CitizenLink.service.interfaces.CitizenService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,9 +78,9 @@ public class CitizenController {
     @GetMapping("/profile/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
     public ResponseEntity<CitizenProfileResponse> getCitizen360(@PathVariable UUID id) {
-        log.info("GET /api/v1/citizens/{}/360", id);
+        log.info("GET /api/v1/citizens/{}/profile", id);
 
-        CitizenProfileResponse response = citizenService.getCitizen360(id);
+        CitizenProfileResponse response = citizenService.getCitizenProfile(id);
 
         return ResponseEntity.ok(response);
     }

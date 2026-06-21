@@ -1,6 +1,6 @@
-package com.ntg.CitizenLink.service;
+package com.ntg.CitizenLink.service.impl;
 
-import lombok.RequiredArgsConstructor;
+import com.ntg.CitizenLink.service.interfaces.IdEncryptionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,8 +17,7 @@ import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
-public class IdEncryptionService {
+public class IdEncryptionServiceImpl implements IdEncryptionService {
 
     private static final String ALGORITHM = "AES/GCM/NoPadding";
     private static final int GCM_IV_LENGTH = 12;
@@ -28,14 +27,11 @@ public class IdEncryptionService {
     private final SecretKey secretKey;
     private final SecureRandom secureRandom;
 
-    // Add @Autowired to let Spring inject the value
     @Autowired
-    public IdEncryptionService(@Value("${encryption.secret-key:citizenLinkEncryptionSecretKey2024!SecureKey}") String secretKeyString) {
-        // Ensure key is 32 bytes for AES-256
+    public IdEncryptionServiceImpl(@Value("${encryption.secret-key:citizenLinkEncryptionSecretKey2024!SecureKey}") String secretKeyString) {
         byte[] keyBytes = secretKeyString.getBytes(StandardCharsets.UTF_8);
         byte[] paddedKey = new byte[AES_KEY_SIZE];
 
-        // Pad or truncate to exactly 32 bytes
         for (int i = 0; i < AES_KEY_SIZE; i++) {
             if (i < keyBytes.length) {
                 paddedKey[i] = keyBytes[i];
@@ -50,7 +46,7 @@ public class IdEncryptionService {
         log.info("IdEncryptionService initialized with AES-256/GCM");
     }
 
-    // Rest of the methods remain the same...
+    @Override
     public String encryptId(UUID id) {
         if (id == null) {
             throw new IllegalArgumentException("ID cannot be null");
@@ -72,11 +68,7 @@ public class IdEncryptionService {
             System.arraycopy(iv, 0, combined, 0, iv.length);
             System.arraycopy(encryptedBytes, 0, combined, iv.length, encryptedBytes.length);
 
-            String encryptedId = Base64.getUrlEncoder().withoutPadding().encodeToString(combined);
-
-            log.debug("Successfully encrypted ID: {} -> {}", id, encryptedId.substring(0, Math.min(20, encryptedId.length())) + "...");
-
-            return encryptedId;
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(combined);
 
         } catch (Exception e) {
             log.error("Failed to encrypt ID: {}", id, e);
@@ -84,6 +76,7 @@ public class IdEncryptionService {
         }
     }
 
+    @Override
     public UUID decryptId(String encryptedId) {
         if (encryptedId == null || encryptedId.isEmpty()) {
             throw new IllegalArgumentException("Encrypted ID cannot be null or empty");
@@ -108,13 +101,7 @@ public class IdEncryptionService {
             byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
             String idString = new String(decryptedBytes, StandardCharsets.UTF_8);
 
-            UUID uuid = UUID.fromString(idString);
-
-            log.debug("Successfully decrypted ID: {} -> {}",
-                    encryptedId.substring(0, Math.min(20, encryptedId.length())) + "...",
-                    uuid);
-
-            return uuid;
+            return UUID.fromString(idString);
 
         } catch (Exception e) {
             log.error("Failed to decrypt ID: {}", encryptedId, e);
@@ -122,6 +109,7 @@ public class IdEncryptionService {
         }
     }
 
+    @Override
     public boolean isValidEncryptedId(String id) {
         if (id == null || id.isEmpty()) {
             return false;
@@ -135,6 +123,7 @@ public class IdEncryptionService {
         }
     }
 
+    @Override
     public UUID decryptIdSafely(String encryptedId) {
         try {
             return decryptId(encryptedId);
