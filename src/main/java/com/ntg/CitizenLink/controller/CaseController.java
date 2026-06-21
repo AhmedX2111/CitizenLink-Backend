@@ -55,6 +55,16 @@ public class CaseController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<CaseResponse> getCaseById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        UUID userId = getUserIdFromUsername(userDetails.getUsername());
+        CaseResponse response = caseService.getCaseById(id, userId);
+        return ResponseEntity.ok(response);
+    }
+
     private UUID getUserIdFromUsername(String username) {
         AppUser user = appUserRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found: " + username));
