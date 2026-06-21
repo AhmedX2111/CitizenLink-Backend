@@ -120,4 +120,23 @@ public class CaseServiceImpl implements CaseService {
                 page.getTotalPages()
         );
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CaseResponse getCaseById(UUID caseId, UUID requesterId) {
+        log.debug("Fetching case {} for requester {}", caseId, requesterId);
+
+        Case found = caseRepository.findById(caseId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+
+        if (!found.getCreatedByUser().getId().equals(requesterId)) {
+            // Return the same 404 as a missing case — never reveal existence
+            // of a case the requester is not authorized to view.
+            log.warn("User {} attempted to access case {} created by another user",
+                    requesterId, caseId);
+            throw ResourceNotFoundException.of("Case", caseId);
+        }
+
+        return caseMapper.toResponse(found);
+    }
 }

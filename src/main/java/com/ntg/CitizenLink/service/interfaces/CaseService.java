@@ -18,4 +18,13 @@ public interface CaseService {
      * Returns a paginated, filtered list of cases.
      */
     PagedResponse<CaseResponse> searchCases(CaseSearchRequest filter, UUID createdByUserId);
+
+    /**
+     * Returns full case details by ID.
+     * Enforces Phase 1 visibility: only the case creator may view it.
+     * Throws ResourceNotFoundException (404) if the case doesn't exist
+     * OR belongs to a different user — existence is never revealed to
+     * unauthorized callers.
+     */
+    CaseResponse getCaseById(UUID caseId, UUID requesterId);
 }
