@@ -1,11 +1,8 @@
 package com.ntg.CitizenLink.controller;
 
-import com.ntg.CitizenLink.dto.AuthResponse;
 import com.ntg.CitizenLink.dto.EncryptedAuthResponse;
 import com.ntg.CitizenLink.dto.LoginRequest;
-import com.ntg.CitizenLink.enums.ActionStatus;
-import com.ntg.CitizenLink.enums.EventType;
-import com.ntg.CitizenLink.service.AuthService;
+import com.ntg.CitizenLink.service.interfaces.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

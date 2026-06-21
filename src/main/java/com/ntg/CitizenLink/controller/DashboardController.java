@@ -3,7 +3,7 @@ package com.ntg.CitizenLink.controller;
 import com.ntg.CitizenLink.dto.agent.response.DashboardSummaryResponse;
 import com.ntg.CitizenLink.dto.agent.response.MyOpenCaseResponse;
 import com.ntg.CitizenLink.security.config.SecurityContextHelper;
-import com.ntg.CitizenLink.service.DashboardService;
+import com.ntg.CitizenLink.service.interfaces.DashboardService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;

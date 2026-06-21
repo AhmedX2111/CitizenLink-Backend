@@ -1,4 +1,4 @@
-package com.ntg.CitizenLink.service;
+package com.ntg.CitizenLink.service.impl;
 
 import com.ntg.CitizenLink.GEH.DuplicateResourceException;
 import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
@@ -14,6 +14,7 @@ import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.repositories.CaseRepository;
 import com.ntg.CitizenLink.repositories.CitizenRepository;
+import com.ntg.CitizenLink.service.interfaces.CitizenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,15 +30,13 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class CitizenService {
+public class CitizenServiceImpl implements CitizenService {
 
     private final CitizenRepository citizenRepository;
     private final AppUserRepository appUserRepository;
     private final CaseRepository caseRepository;
 
-    /**
-     * Search citizens by name (partial), national ID, or phone
-     */
+    @Override
     @Transactional(readOnly = true)
     public Page<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
         log.info("Searching citizens with term: '{}'", request.getSearchTerm());
@@ -57,9 +56,7 @@ public class CitizenService {
         return citizenPage.map(this::toResponse);
     }
 
-    /**
-     * US-09: Create a new citizen record
-     */
+    @Override
     @Transactional
     public CitizenResponse createCitizen(CreateCitizenRequest request, UUID createdByUserId) {
         log.info("Creating new citizen with national ID: {}", request.getNationalId());
@@ -79,7 +76,7 @@ public class CitizenService {
         // Process email: convert empty string to null
         String email = request.getEmail();
         if (email != null && email.trim().isEmpty()) {
-            email = null;  // Convert empty string to NULL for database
+            email = null;
         }
 
         // Check for duplicate email (only if email is not null)
@@ -88,7 +85,7 @@ public class CitizenService {
             throw new DuplicateResourceException("Citizen", "email", email);
         }
 
-        // Get the creating user - using the factory method
+        // Get the creating user
         AppUser createdBy = appUserRepository.findById(createdByUserId)
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", createdByUserId));
 
@@ -97,7 +94,7 @@ public class CitizenService {
         citizen.setFullName(request.getFullName());
         citizen.setNationalId(request.getNationalId());
         citizen.setPhone(request.getPhone());
-        citizen.setEmail(email);  // Use the processed email (null if empty)
+        citizen.setEmail(email);
         citizen.setPreferredLanguage(request.getPreferredLanguage() != null ? request.getPreferredLanguage() : "en");
         citizen.setCreatedByUser(createdBy);
 
@@ -108,38 +105,24 @@ public class CitizenService {
         return toResponse(savedCitizen);
     }
 
-    /**
-     * US-08: Get citizen profile with case history
-     */
+    @Override
     @Transactional(readOnly = true)
-    public CitizenProfileResponse getCitizen360(UUID id) {
+    public CitizenProfileResponse getCitizenProfile(UUID id) {
         log.info("Fetching citizen profile for ID: {}", id);
 
-        // Get citizen
         Citizen citizen = citizenRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.of("Citizen", id));
 
-        // Get case statistics - Use CaseStatus enum
         long totalCases = caseRepository.countByCitizenId(id);
 
-        // Pass CaseStatus enum values instead of strings
         long openCases = caseRepository.countByCitizenIdAndStatusNotIn(id,
-                List.of(
-                        CaseStatus.RESOLVED,
-                        CaseStatus.CLOSED,
-                        CaseStatus.CANCELLED
-                ));
+                List.of(CaseStatus.RESOLVED, CaseStatus.CLOSED, CaseStatus.CANCELLED));
 
         long resolvedCases = caseRepository.countByCitizenIdAndStatusIn(id,
-                List.of(
-                        CaseStatus.RESOLVED,
-                        CaseStatus.CLOSED
-                ));
+                List.of(CaseStatus.RESOLVED, CaseStatus.CLOSED));
 
-        // Get recent cases (last 5)
         List<Case> recentCases = caseRepository.findTop5ByCitizenIdOrderByCreatedAtDesc(id);
 
-        // Build response
         return CitizenProfileResponse.builder()
                 .id(citizen.getId())
                 .fullName(citizen.getFullName())
@@ -159,9 +142,7 @@ public class CitizenService {
                 .build();
     }
 
-    /**
-     * Get citizen by ID with case count
-     */
+    @Override
     @Transactional(readOnly = true)
     public CitizenResponse getCitizenById(UUID id) {
         log.info("Fetching citizen by ID: {}", id);
@@ -172,9 +153,11 @@ public class CitizenService {
         return toResponse(citizen);
     }
 
-    /**
-     * Convert Citizen entity to CitizenResponse DTO
-     */
+    @Override
+    public boolean existsByNationalId(String nationalId) {
+        return citizenRepository.existsByNationalId(nationalId);
+    }
+
     private CitizenResponse toResponse(Citizen citizen) {
         long caseCount = citizenRepository.countCasesByCitizenId(citizen.getId());
 
@@ -190,9 +173,6 @@ public class CitizenService {
                 .build();
     }
 
-    /**
-     * Convert Case to CaseSummaryResponse
-     */
     private CaseSummaryResponse toCaseSummary(Case caseEntity) {
         return CaseSummaryResponse.builder()
                 .id(caseEntity.getId())
