@@ -6,10 +6,12 @@ import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
 import com.ntg.CitizenLink.entities.AppUser;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
+import com.ntg.CitizenLink.security.config.SecurityContextHelper;
 import com.ntg.CitizenLink.service.interfaces.CaseService;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -27,20 +29,21 @@ import java.util.UUID;
  * The controller never accesses repositories directly.
  * It never returns entity objects — only DTOs from CaseService.
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/cases")
 @RequiredArgsConstructor
 public class CaseController {
 
     private final CaseService caseService;
-    private final AppUserRepository appUserRepository;
-
+    private final SecurityContextHelper securityContextHelper;
     @PostMapping
     public ResponseEntity<CaseResponse> createCase(
             @Valid @RequestBody CreateCaseRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
 
-        UUID userId = getUserIdFromUsername(userDetails.getUsername());
+        // Use SecurityContextHelper
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
         CaseResponse response = caseService.createCase(request, userId);
         return ResponseEntity.ok(response);
     }
@@ -50,7 +53,8 @@ public class CaseController {
             @Valid CaseSearchRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
 
-        UUID userId = getUserIdFromUsername(userDetails.getUsername());
+        // Use SecurityContextHelper
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
         PagedResponse<CaseResponse> response = caseService.searchCases(request, userId);
         return ResponseEntity.ok(response);
     }
@@ -60,14 +64,9 @@ public class CaseController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserDetails userDetails) {
 
-        UUID userId = getUserIdFromUsername(userDetails.getUsername());
+        // Use SecurityContextHelper
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
         CaseResponse response = caseService.getCaseById(id, userId);
         return ResponseEntity.ok(response);
-    }
-
-    private UUID getUserIdFromUsername(String username) {
-        AppUser user = appUserRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
-        return user.getId();
     }
 }

@@ -5,6 +5,7 @@ import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.CitizenLink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
+import com.ntg.CitizenLink.security.config.SecurityContextHelper;
 import com.ntg.CitizenLink.service.interfaces.CitizenService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,7 @@ import java.util.UUID;
 public class CitizenController {
 
     private final CitizenService citizenService;
-    private final AppUserRepository appUserRepository;
+    private final SecurityContextHelper securityContextHelper;
 
     /**
      * US-07: Search for a citizen
@@ -56,16 +57,13 @@ public class CitizenController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
     public ResponseEntity<CitizenResponse> createCitizen(
-            @Valid @RequestBody CreateCitizenRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @Valid @RequestBody CreateCitizenRequest request
     ) {
-        log.info("POST /api/v1/citizens - createdBy: {}",
-                userDetails.getUsername());
+        //  Get userId from SecurityContextHelper
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
 
-        // Get user ID from authenticated user
-        UUID userId = appUserRepository.findByUsername(userDetails.getUsername())
-                .orElseThrow(() -> new RuntimeException("User not found: " + userDetails.getUsername()))
-                .getId();
+        log.info("POST /api/v1/citizens - nationalId: {}, createdBy: {}",
+                request.getNationalId(), securityContextHelper.getAuthenticatedUsername());
 
         CitizenResponse response = citizenService.createCitizen(request, userId);
 
