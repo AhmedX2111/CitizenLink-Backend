@@ -28,7 +28,7 @@ public class IdEncryptionServiceImpl implements IdEncryptionService {
     private final SecureRandom secureRandom;
 
     @Autowired
-    public IdEncryptionServiceImpl(@Value("${encryption.secret-key:citizenLinkEncryptionSecretKey2024!SecureKey}") String secretKeyString) {
+    public IdEncryptionServiceImpl(@Value("${encryption.secret-key}") String secretKeyString) {
         byte[] keyBytes = secretKeyString.getBytes(StandardCharsets.UTF_8);
         byte[] paddedKey = new byte[AES_KEY_SIZE];
 

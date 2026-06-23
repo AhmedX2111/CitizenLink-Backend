@@ -14,7 +14,7 @@ target/
 .sts4-cache
 
 ### IntelliJ IDEA ###
-.idea
+.idea/
 *.iws
 *.iml
 *.ipr
@@ -32,13 +32,46 @@ build/
 ### VS Code ###
 .vscode/
 
-# Ignore application properties files
-application.properties
+# =====================================================
+# SECRETS & ENVIRONMENT FILES (NEVER COMMIT)
+# =====================================================
+.env
+.env.local
+.env.*.local
+*.env
+*.local.properties
+application-dev.properties
+application-prod.properties
+application-local.properties
+*secret*.properties
 
-# Or ignore all property files in resources
-src/main/resources/application.properties
-src/main/resources/application-*.properties
+# =====================================================
+# APPLICATION PROPERTIES - KEEP THE MAIN FILE!
+# =====================================================
+# ❌ DO NOT IGNORE application.properties - it's needed!
+# ✅ Only ignore environment-specific files
+src/main/resources/application-dev.properties
+src/main/resources/application-prod.properties
+src/main/resources/application-local.properties
+src/main/resources/application-test.properties
 
-# Also consider ignoring
-*.properties
-!.application-default.properties  # This would keep a template file
+# =====================================================
+# LOGS
+# =====================================================
+logs/
+*.log
+
+# =====================================================
+# OS FILES
+# =====================================================
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*.swo
+
+# =====================================================
+# UPLOADS
+# =====================================================
+uploads/
+*.upload
