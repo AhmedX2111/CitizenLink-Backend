@@ -1,6 +1,7 @@
 package com.ntg.CitizenLink.dto.agent.request;
 
 import jakarta.validation.constraints.NotBlank;
+import com.ntg.CitizenLink.constants.ValidationPatterns;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import com.ntg.CitizenLink.constants.ValidationPatterns;
