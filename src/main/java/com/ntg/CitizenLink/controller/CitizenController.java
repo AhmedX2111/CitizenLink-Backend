@@ -59,8 +59,8 @@ public class CitizenController {
             @Valid @RequestBody CreateCitizenRequest request,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
-        log.info("POST /api/v1/citizens - nationalId: {}, createdBy: {}",
-                request.getNationalId(), userDetails.getUsername());
+        log.info("POST /api/v1/citizens - createdBy: {}",
+                userDetails.getUsername());
 
         // Get user ID from authenticated user
         UUID userId = appUserRepository.findByUsername(userDetails.getUsername())
