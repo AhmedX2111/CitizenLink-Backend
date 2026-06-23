@@ -7,6 +7,7 @@ import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.CitizenLink.dto.agent.response.CaseSummaryResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
+import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
 import com.ntg.CitizenLink.entities.AppUser;
 import com.ntg.CitizenLink.entities.Case;
 import com.ntg.CitizenLink.entities.Citizen;
@@ -38,12 +39,12 @@ public class CitizenServiceImpl implements CitizenService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
+    public PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
         log.info("Searching citizens with term: '{}'", request.getSearchTerm());
 
         if (request.isEmpty()) {
             log.warn("Empty search term provided");
-            return Page.empty();
+            return new PagedResponse<>(List.of(), 0, request.getSize(), 0, 0);
         }
 
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
@@ -53,7 +54,18 @@ public class CitizenServiceImpl implements CitizenService {
                 pageable
         );
 
-        return citizenPage.map(this::toResponse);
+        List<CitizenResponse> content = citizenPage.getContent()
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+
+        return new PagedResponse<>(
+                content,
+                citizenPage.getNumber(),
+                citizenPage.getSize(),
+                citizenPage.getTotalElements(),
+                citizenPage.getTotalPages()
+        );
     }
 
     @Override
@@ -158,6 +170,9 @@ public class CitizenServiceImpl implements CitizenService {
         return citizenRepository.existsByNationalId(nationalId);
     }
 
+    /**
+     * Convert Citizen entity to CitizenResponse DTO
+     */
     private CitizenResponse toResponse(Citizen citizen) {
         long caseCount = citizenRepository.countCasesByCitizenId(citizen.getId());
 
@@ -173,6 +188,9 @@ public class CitizenServiceImpl implements CitizenService {
                 .build();
     }
 
+    /**
+     * Convert Case entity to CaseSummaryResponse DTO
+     */
     private CaseSummaryResponse toCaseSummary(Case caseEntity) {
         return CaseSummaryResponse.builder()
                 .id(caseEntity.getId())

@@ -4,6 +4,7 @@ import com.ntg.CitizenLink.dto.agent.request.CitizenSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.CitizenLink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.CitizenLink.dto.agent.response.CitizenResponse;
+import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.security.config.SecurityContextHelper;
 import com.ntg.CitizenLink.service.interfaces.CitizenService;
@@ -34,7 +35,7 @@ public class CitizenController {
      */
     @GetMapping("/search")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
-    public ResponseEntity<Page<CitizenResponse>> searchCitizens(
+    public ResponseEntity<PagedResponse<CitizenResponse>> searchCitizens(
             @RequestParam(required = false) String searchTerm,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
@@ -46,7 +47,7 @@ public class CitizenController {
         request.setPage(page);
         request.setSize(size);
 
-        Page<CitizenResponse> response = citizenService.searchCitizens(request);
+        PagedResponse<CitizenResponse> response = citizenService.searchCitizens(request);
 
         return ResponseEntity.ok(response);
     }
@@ -59,7 +60,6 @@ public class CitizenController {
     public ResponseEntity<CitizenResponse> createCitizen(
             @Valid @RequestBody CreateCitizenRequest request
     ) {
-        //  Get userId from SecurityContextHelper
         UUID userId = securityContextHelper.getAuthenticatedUserId();
 
         log.info("POST /api/v1/citizens - nationalId: {}, createdBy: {}",
