@@ -5,6 +5,7 @@ import com.ntg.CitizenLink.entities.Case;
 import com.ntg.CitizenLink.dto.agent.response.MyOpenCaseResponse;
 import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.enums.CaseStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -46,8 +47,16 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
     long countByCitizenIdAndStatusIn(@Param("citizenId") UUID citizenId, @Param("statuses") List<CaseStatus> statuses);
 
     // Get recent cases for a citizen
-    @Query("SELECT c FROM Case c WHERE c.citizen.id = :citizenId ORDER BY c.createdAt DESC")
-    List<Case> findTop5ByCitizenIdOrderByCreatedAtDesc(@Param("citizenId") UUID citizenId);
+    @Query("""
+    SELECT c
+    FROM Case c
+    WHERE c.citizen.id = :citizenId
+    ORDER BY c.createdAt DESC
+""")
+    List<Case> findByCitizenIdOrderByCreatedAtDesc(
+            @Param("citizenId") UUID citizenId,
+            Pageable pageable
+    );
 
     // ── US-04: KPI counts ──────────────────────────────────────────────
     /**
