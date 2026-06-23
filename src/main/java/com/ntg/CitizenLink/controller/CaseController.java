@@ -4,8 +4,6 @@ package com.ntg.CitizenLink.controller;
 import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
-import com.ntg.CitizenLink.entities.AppUser;
-import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.security.config.SecurityContextHelper;
 import com.ntg.CitizenLink.service.interfaces.CaseService;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
@@ -39,8 +37,7 @@ public class CaseController {
     private final SecurityContextHelper securityContextHelper;
     @PostMapping
     public ResponseEntity<CaseResponse> createCase(
-            @Valid @RequestBody CreateCaseRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @Valid @RequestBody CreateCaseRequest request) {
 
         // Use SecurityContextHelper
         UUID userId = securityContextHelper.getAuthenticatedUserId();
@@ -50,8 +47,7 @@ public class CaseController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<CaseResponse>> searchCases(
-            @Valid CaseSearchRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @Valid CaseSearchRequest request) {
 
         // Use SecurityContextHelper
         UUID userId = securityContextHelper.getAuthenticatedUserId();
@@ -61,8 +57,7 @@ public class CaseController {
 
     @GetMapping("/{id}")
     public ResponseEntity<CaseResponse> getCaseById(
-            @PathVariable UUID id,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable UUID id) {
 
         // Use SecurityContextHelper
         UUID userId = securityContextHelper.getAuthenticatedUserId();
