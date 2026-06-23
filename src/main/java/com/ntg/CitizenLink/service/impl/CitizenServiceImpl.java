@@ -71,11 +71,11 @@ public class CitizenServiceImpl implements CitizenService {
     @Override
     @Transactional
     public CitizenResponse createCitizen(CreateCitizenRequest request, UUID createdByUserId) {
-        log.info("Creating new citizen with national ID: {}", request.getNationalId());
+        log.info("Creating new citizen");
 
         // Check for duplicate national ID
         if (citizenRepository.existsByNationalId(request.getNationalId())) {
-            log.warn("Duplicate national ID: {}", request.getNationalId());
+            log.warn("Citizen creation failed due to duplicate national ID");
             throw new DuplicateResourceException("Citizen", "national ID", request.getNationalId());
         }
 
@@ -133,8 +133,11 @@ public class CitizenServiceImpl implements CitizenService {
         long resolvedCases = caseRepository.countByCitizenIdAndStatusIn(id,
                 List.of(CaseStatus.RESOLVED, CaseStatus.CLOSED));
 
-        List<Case> recentCases = caseRepository.findTop5ByCitizenIdOrderByCreatedAtDesc(id);
-
+        List<Case> recentCases =
+                caseRepository.findByCitizenIdOrderByCreatedAtDesc(
+                        id,
+                        PageRequest.of(0, 5)
+                );
         return CitizenProfileResponse.builder()
                 .id(citizen.getId())
                 .fullName(citizen.getFullName())
