@@ -5,6 +5,8 @@ import com.ntg.CitizenLink.enums.Channel;
 import com.ntg.CitizenLink.enums.Priority;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import com.ntg.CitizenLink.constants.ValidationPatterns;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -33,7 +35,7 @@ public class CreateCaseRequest {
     private Channel channel;
 
     @NotBlank(message = "Citizen National ID is required")
-    @Size(min = 10, max = 50, message = "National ID must be between 10-50 characters")
+    @Pattern(regexp = ValidationPatterns.NATIONAL_ID_PATTERN, message = ValidationPatterns.NATIONAL_ID_MESSAGE)
     private String citizenNationalId;
 
     @NotNull(message = "Category ID is required")

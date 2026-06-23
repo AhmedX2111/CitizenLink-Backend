@@ -1,6 +1,7 @@
 package com.ntg.CitizenLink.dto.agent.request;
 
 import jakarta.validation.constraints.NotBlank;
+import com.ntg.CitizenLink.constants.ValidationPatterns;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -13,7 +14,7 @@ public class CreateCitizenRequest {
     private String fullName;
 
     @NotBlank(message = "National ID is required")
-    @Pattern(regexp = "^[0-9]{10}$", message = "National ID must be 10 digits")
+    @Pattern(regexp = ValidationPatterns.NATIONAL_ID_PATTERN, message = ValidationPatterns.NATIONAL_ID_MESSAGE)
     private String nationalId;
 
     @NotBlank(message = "Phone number is required")
