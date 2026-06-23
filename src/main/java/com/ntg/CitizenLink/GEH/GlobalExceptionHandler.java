@@ -1,5 +1,6 @@
 package com.ntg.CitizenLink.GEH;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -32,6 +33,21 @@ public class GlobalExceptionHandler {
                 OffsetDateTime.now()
         );
         return ResponseEntity.badRequest().body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 409 Conflict - Database constraint violation (race condition)
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.CONFLICT.value(),
+                "A record with this value already exists.",
+                null,
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     // -------------------------------------------------------------------------
