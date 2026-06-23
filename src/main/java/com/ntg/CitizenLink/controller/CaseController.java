@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -36,31 +37,44 @@ public class CaseController {
 
     private final CaseService caseService;
     private final SecurityContextHelper securityContextHelper;
+
+    /**
+     * Create a new case.
+     * Accessible to all staff roles (AGENT, HANDLER, SUPERVISOR, ADMIN)
+     */
     @PostMapping
+    @PreAuthorize("hasAnyRole('AGENT', 'HANDLER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<CaseResponse> createCase(
             @Valid @RequestBody CreateCaseRequest request) {
 
-        // Use SecurityContextHelper
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         CaseResponse response = caseService.createCase(request, userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    /**
+     * Search cases with pagination and filters.
+     * Accessible to all staff roles (AGENT, HANDLER, SUPERVISOR, ADMIN)
+     */
     @GetMapping
+    @PreAuthorize("hasAnyRole('AGENT', 'HANDLER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<PagedResponse<CaseResponse>> searchCases(
             @Valid CaseSearchRequest request) {
 
-        // Use SecurityContextHelper
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         PagedResponse<CaseResponse> response = caseService.searchCases(request, userId);
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Get case by ID.
+     * Accessible to all staff roles (AGENT, HANDLER, SUPERVISOR, ADMIN)
+     */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('AGENT', 'HANDLER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<CaseResponse> getCaseById(
             @PathVariable UUID id) {
 
-        // Use SecurityContextHelper
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         CaseResponse response = caseService.getCaseById(id, userId);
         return ResponseEntity.ok(response);
