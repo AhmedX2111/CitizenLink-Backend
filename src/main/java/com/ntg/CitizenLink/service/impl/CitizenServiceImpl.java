@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -54,9 +55,23 @@ public class CitizenServiceImpl implements CitizenService {
                 pageable
         );
 
+        // ── Fetch all case counts for this page in ONE query ──────────────
+        List<UUID> citizenIds = citizenPage.getContent()
+                .stream()
+                .map(Citizen::getId)
+                .collect(Collectors.toList());
+
+        Map<UUID, Long> caseCountsById = citizenRepository
+                .countCasesByCitizenIds(citizenIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (UUID) row[0],
+                        row -> (Long) row[1]
+                ));
+
         List<CitizenResponse> content = citizenPage.getContent()
                 .stream()
-                .map(this::toResponse)
+                .map(c -> toResponse(c, caseCountsById.getOrDefault(c.getId(), 0L)))
                 .collect(Collectors.toList());
 
         return new PagedResponse<>(
@@ -114,7 +129,8 @@ public class CitizenServiceImpl implements CitizenService {
 
         log.info("Citizen created successfully with ID: {}", savedCitizen.getId());
 
-        return toResponse(savedCitizen);
+        // Brand new citizen — guaranteed to have zero cases, no query needed.
+        return toResponse(savedCitizen, 0L);
     }
 
     @Override
@@ -165,7 +181,9 @@ public class CitizenServiceImpl implements CitizenService {
         Citizen citizen = citizenRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.of("Citizen", id));
 
-        return toResponse(citizen);
+        long caseCount = caseRepository.countByCitizenId(id);
+
+        return toResponse(citizen, caseCount);
     }
 
     @Override
@@ -174,11 +192,14 @@ public class CitizenServiceImpl implements CitizenService {
     }
 
     /**
-     * Convert Citizen entity to CitizenResponse DTO
+     * Convert Citizen entity to CitizenResponse DTO.
+     *
+     * caseCount is always passed in by the caller rather than looked up here —
+     * this keeps the mapper a pure function with no hidden database calls,
+     * and lets callers batch-fetch counts (e.g. searchCitizens uses one grouped
+     * query for an entire page instead of one query per citizen).
      */
-    private CitizenResponse toResponse(Citizen citizen) {
-        long caseCount = citizenRepository.countCasesByCitizenId(citizen.getId());
-
+    private CitizenResponse toResponse(Citizen citizen, long caseCount) {
         return CitizenResponse.builder()
                 .id(citizen.getId())
                 .fullName(citizen.getFullName())

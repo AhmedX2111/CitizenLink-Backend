@@ -3,6 +3,7 @@ package com.ntg.CitizenLink.service;
 import com.ntg.CitizenLink.entities.AppUser;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
@@ -26,6 +27,7 @@ import java.util.List;
  *   Passing active=false disables the account at the Spring Security level,
  *   which returns 401 before the request reaches any controller.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserDetailsServiceImpl implements UserDetailsService {
@@ -34,7 +36,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        System.out.println("Loading from DATABASE: " + username); // Debug: always load to avoid cache surprises
+        log.debug("Loading user from DATABASE: {}", username); // Debug: always load to avoid cache surprises
 
         AppUser appUser = appUserRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException(
