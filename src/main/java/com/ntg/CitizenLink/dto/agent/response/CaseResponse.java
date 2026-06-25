@@ -38,6 +38,7 @@ public class CaseResponse {
     private UUID citizenId;
     private String citizenFullName;
     private String citizenNationalId;
+    private String citizenPhone;
 
     // Flattened lookup refs
     private UUID categoryId;

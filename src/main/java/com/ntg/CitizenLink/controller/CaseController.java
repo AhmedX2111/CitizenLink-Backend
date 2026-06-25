@@ -4,6 +4,7 @@ package com.ntg.CitizenLink.controller;
 import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
+import com.ntg.CitizenLink.dto.agent.response.StatusHistoryResponse;
 import com.ntg.CitizenLink.security.config.SecurityContextHelper;
 import com.ntg.CitizenLink.service.interfaces.CaseService;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
@@ -17,6 +18,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -77,6 +79,19 @@ public class CaseController {
 
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         CaseResponse response = caseService.getCaseById(id, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * GET /api/v1/cases/{id}/timeline
+     *
+     * US-14, DET-03: full chronological status-history for the case-detail page.
+     * Same Phase 1 visibility rule as getCaseById — 404 if not the creator.
+     */
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<List<StatusHistoryResponse>> getCaseTimeline(@PathVariable UUID id) {
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        List<StatusHistoryResponse> response = caseService.getCaseTimeline(id, userId);
         return ResponseEntity.ok(response);
     }
 }

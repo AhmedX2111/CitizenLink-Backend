@@ -5,6 +5,7 @@ import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
+import com.ntg.CitizenLink.dto.agent.response.StatusHistoryResponse;
 import com.ntg.CitizenLink.entities.*;
 import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.enums.WorkflowAction;
@@ -138,5 +139,42 @@ public class CaseServiceImpl implements CaseService {
         }
 
         return caseMapper.toResponse(found);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<StatusHistoryResponse> getCaseTimeline(UUID caseId, UUID requesterId) {
+        log.debug("Fetching timeline for case {} requested by {}", caseId, requesterId);
+
+        // Reuse the exact same visibility check as getCaseById — same case,
+        // same authorization rule, so re-verify ownership here independently
+        // rather than assuming the caller already checked it.
+        Case found = caseRepository.findById(caseId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+
+        if (!found.getCreatedByUser().getId().equals(requesterId)) {
+            log.warn("User {} attempted to access timeline for case {} created by another user",
+                    requesterId, caseId);
+            throw ResourceNotFoundException.of("Case", caseId);
+        }
+
+        List<StatusHistory> history = statusHistoryRepository
+                .findByCaseIdOrderByCreatedAtAsc(caseId);
+        return history.stream()
+                .map(this::toStatusHistoryResponse)
+                .collect(Collectors.toList());
+    }
+
+    private StatusHistoryResponse toStatusHistoryResponse(StatusHistory sh) {
+        return StatusHistoryResponse.builder()
+                .id(sh.getId())
+                .fromStatus(sh.getFromStatus())
+                .toStatus(sh.getToStatus())
+                .action(sh.getAction())
+                .comment(sh.getComment())
+                .createdAt(sh.getCreatedAt())
+                .changedByUserId(sh.getChangedByUser().getId())
+                .changedByDisplayName(sh.getChangedByUser().getDisplayName())
+                .build();
     }
 }

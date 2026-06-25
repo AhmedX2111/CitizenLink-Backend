@@ -4,6 +4,9 @@ import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
+import com.ntg.CitizenLink.dto.agent.response.StatusHistoryResponse;
+
+import java.util.List;
 import java.util.UUID;
 
 
@@ -27,4 +30,11 @@ public interface CaseService {
      * unauthorized callers.
      */
     CaseResponse getCaseById(UUID caseId, UUID requesterId);
+
+    /**
+     * Returns the full chronological status-history timeline for a case
+     * (US-14, DET-03). Enforces the same Phase 1 visibility rule as
+     * getCaseById: only the case creator may view it.
+     */
+    List<StatusHistoryResponse> getCaseTimeline(UUID caseId, UUID requesterId);
 }
