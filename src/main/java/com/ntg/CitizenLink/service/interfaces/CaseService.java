@@ -1,7 +1,9 @@
 package com.ntg.CitizenLink.service.interfaces;
 
 import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
+import com.ntg.CitizenLink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
+import com.ntg.CitizenLink.dto.agent.response.CaseActionResponse;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
 import com.ntg.CitizenLink.dto.agent.response.StatusHistoryResponse;
@@ -24,7 +26,9 @@ public interface CaseService {
 
     /**
      * Returns full case details by ID.
-     * Enforces Phase 1 visibility: only the case creator may view it.
+     * Enforces visibility via CaseAccessPolicy: ADMIN/SUPERVISOR see any
+     * case, HANDLER sees cases assigned to them, AGENT sees cases they
+     * created (US-17 visibility update).
      * Throws ResourceNotFoundException (404) if the case doesn't exist
      * OR belongs to a different user — existence is never revealed to
      * unauthorized callers.
@@ -33,8 +37,29 @@ public interface CaseService {
 
     /**
      * Returns the full chronological status-history timeline for a case
-     * (US-14, DET-03). Enforces the same Phase 1 visibility rule as
-     * getCaseById: only the case creator may view it.
+     * (US-14, DET-03). Enforces the same CaseAccessPolicy visibility rule
+     * as getCaseById.
      */
     List<StatusHistoryResponse> getCaseTimeline(UUID caseId, UUID requesterId);
+
+    /**
+     * US-17: returns every workflow action the requester is currently
+     * permitted to trigger on this case, given its current status and
+     * their role + assignment relationship to the case.
+     * Drives button visibility on the case-detail page.
+     */
+    List<CaseActionResponse> getCaseActions(UUID caseId, UUID requesterId);
+
+    /**
+     * WFL-01: executes a workflow transition. Validates the action is
+     * legal for the case's current status AND the requester's role,
+     * throwing IllegalTransitionException (409) if not. Also enforces
+     * the HANDLER-must-be-assignee ownership rule.
+     *
+     * On success: updates Case.status (and resolvedAt/closedAt if
+     * applicable per existing entity semantics), writes a StatusHistory
+     * row (WFL-02), and returns the updated CaseResponse.
+     */
+    CaseResponse transitionCase(UUID caseId, UUID requesterId, CaseTransitionRequest request);
+
 }

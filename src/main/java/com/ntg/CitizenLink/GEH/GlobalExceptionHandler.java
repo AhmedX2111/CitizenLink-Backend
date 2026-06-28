@@ -172,4 +172,19 @@ public class GlobalExceptionHandler {
             Map<String, String> fieldErrors,
             OffsetDateTime timestamp
     ) {}
+
+    // -------------------------------------------------------------------------
+    // 409 Conflict - Illegal workflow transition (WFL-01)
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(IllegalTransitionException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalTransition(IllegalTransitionException ex) {
+        log.warn("Illegal transition attempted: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.CONFLICT.value(),
+                ex.getMessage(),
+                null,
+                OffsetDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
 }

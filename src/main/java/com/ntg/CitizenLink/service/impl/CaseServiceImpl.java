@@ -1,15 +1,22 @@
 package com.ntg.CitizenLink.service.impl;
 
+import com.ntg.CitizenLink.GEH.IllegalTransitionException;
 import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
 import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
+import com.ntg.CitizenLink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
+import com.ntg.CitizenLink.dto.agent.response.CaseActionResponse;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
 import com.ntg.CitizenLink.dto.agent.response.StatusHistoryResponse;
 import com.ntg.CitizenLink.entities.*;
 import com.ntg.CitizenLink.enums.CaseStatus;
+import com.ntg.CitizenLink.enums.UserRole;
 import com.ntg.CitizenLink.enums.WorkflowAction;
 import com.ntg.CitizenLink.repositories.*;
+import com.ntg.CitizenLink.security.CaseAccessPolicy;
+import com.ntg.CitizenLink.service.CaseTransitionRule;
+import com.ntg.CitizenLink.service.CaseWorkflowService;
 import com.ntg.CitizenLink.service.interfaces.CaseNumberService;
 import com.ntg.CitizenLink.service.interfaces.CaseService;
 import com.ntg.CitizenLink.service.mapper.CaseMapper;
@@ -22,6 +29,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -39,6 +47,8 @@ public class CaseServiceImpl implements CaseService {
     private final StatusHistoryRepository statusHistoryRepository;
     private final CaseNumberService caseNumberService;
     private final CaseMapper caseMapper;
+    private final CaseAccessPolicy caseAccessPolicy;
+    private final CaseWorkflowService caseWorkflowService;
 
     @Override
     @Transactional
@@ -130,11 +140,11 @@ public class CaseServiceImpl implements CaseService {
         Case found = caseRepository.findById(caseId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
 
-        if (!found.getCreatedByUser().getId().equals(requesterId)) {
-            // Return the same 404 as a missing case — never reveal existence
-            // of a case the requester is not authorized to view.
-            log.warn("User {} attempted to access case {} created by another user",
-                    requesterId, caseId);
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        if (!caseAccessPolicy.canView(found, requester)) {
+            log.warn("User {} attempted to access case {} without permission", requesterId, caseId);
             throw ResourceNotFoundException.of("Case", caseId);
         }
 
@@ -146,15 +156,14 @@ public class CaseServiceImpl implements CaseService {
     public List<StatusHistoryResponse> getCaseTimeline(UUID caseId, UUID requesterId) {
         log.debug("Fetching timeline for case {} requested by {}", caseId, requesterId);
 
-        // Reuse the exact same visibility check as getCaseById — same case,
-        // same authorization rule, so re-verify ownership here independently
-        // rather than assuming the caller already checked it.
         Case found = caseRepository.findById(caseId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
 
-        if (!found.getCreatedByUser().getId().equals(requesterId)) {
-            log.warn("User {} attempted to access timeline for case {} created by another user",
-                    requesterId, caseId);
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        if (!caseAccessPolicy.canView(found, requester)) {
+            log.warn("User {} attempted to access timeline for case {} without permission", requesterId, caseId);
             throw ResourceNotFoundException.of("Case", caseId);
         }
 
@@ -163,6 +172,97 @@ public class CaseServiceImpl implements CaseService {
         return history.stream()
                 .map(this::toStatusHistoryResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CaseActionResponse> getCaseActions(UUID caseId, UUID requesterId) {
+        log.debug("Fetching allowed actions for case {} requested by {}", caseId, requesterId);
+
+        Case found = caseRepository.findById(caseId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        // Must be able to VIEW before we even consider what actions to offer.
+        if (!caseAccessPolicy.canView(found, requester)) {
+            log.warn("User {} attempted to access actions for case {} without permission", requesterId, caseId);
+            throw ResourceNotFoundException.of("Case", caseId);
+        }
+
+        // HANDLER ownership: even though canView() already confirmed HANDLER
+        // is the assignee for this case, AGENT never has any actions at all
+        // regardless of ownership — that's enforced by getAllowedActions()
+        // since no rule in the table lists AGENT in allowedRoles.
+        return caseWorkflowService.getAllowedActions(found.getStatus(), requester.getRole());
+    }
+
+    @Override
+    @Transactional
+    public CaseResponse transitionCase(UUID caseId, UUID requesterId, CaseTransitionRequest request) {
+        log.info("Transition requested: case={}, action={}, requester={}",
+                caseId, request.getAction(), requesterId);
+
+        Case found = caseRepository.findById(caseId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        // 1. Must be able to view the case at all (HANDLER must be assignee).
+        if (!caseAccessPolicy.canView(found, requester)) {
+            log.warn("User {} attempted transition on case {} without view permission",
+                    requesterId, caseId);
+            throw ResourceNotFoundException.of("Case", caseId);
+        }
+
+        // 2. Validate the transition itself: current status + action + role.
+        //    Throws IllegalTransitionException (409) per WFL-01 if invalid.
+        CaseTransitionRule rule = caseWorkflowService.resolveTransition(
+                found.getStatus(), request.getAction(), requester.getRole());
+
+        // 3. WFL-03 / WFL-04: conditionally required fields.
+        if (rule.requiresComment() && (request.getComment() == null || request.getComment().isBlank())) {
+            throw new IllegalTransitionException(
+                    "A comment/reason is required for action " + request.getAction());
+        }
+        if (rule.requiresResolutionSummary()
+                && (request.getResolutionSummary() == null || request.getResolutionSummary().isBlank())) {
+            throw new IllegalTransitionException(
+                    "A resolution summary is required for action " + request.getAction());
+        }
+
+        CaseStatus fromStatus = found.getStatus();
+        CaseStatus toStatus = rule.toStatus();
+
+        found.setStatus(toStatus);
+
+        if (rule.requiresResolutionSummary()) {
+            found.setResolutionSummary(request.getResolutionSummary());
+        }
+        if (toStatus == CaseStatus.RESOLVED) {
+            found.setResolvedAt(OffsetDateTime.now());
+        }
+        if (toStatus == CaseStatus.CLOSED) {
+            found.setClosedAt(OffsetDateTime.now());
+        }
+
+        Case saved = caseRepository.save(found);
+
+        // WFL-02: every transition creates a timeline entry.
+        StatusHistory history = new StatusHistory();
+        history.setCaseEntity(saved);
+        history.setFromStatus(fromStatus);
+        history.setToStatus(toStatus);
+        history.setAction(request.getAction());
+        history.setChangedByUser(requester);
+        history.setComment(rule.requiresComment() ? request.getComment() : null);
+        statusHistoryRepository.save(history);
+
+        log.info("Case {} transitioned {} -> {} via {}", caseId, fromStatus, toStatus, request.getAction());
+
+        return caseMapper.toResponse(saved);
     }
 
     private StatusHistoryResponse toStatusHistoryResponse(StatusHistory sh) {

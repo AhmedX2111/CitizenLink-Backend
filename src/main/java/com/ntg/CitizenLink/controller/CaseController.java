@@ -2,7 +2,9 @@ package com.ntg.CitizenLink.controller;
 
 
 import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
+import com.ntg.CitizenLink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
+import com.ntg.CitizenLink.dto.agent.response.CaseActionResponse;
 import com.ntg.CitizenLink.dto.agent.response.PagedResponse;
 import com.ntg.CitizenLink.dto.agent.response.StatusHistoryResponse;
 import com.ntg.CitizenLink.security.config.SecurityContextHelper;
@@ -92,6 +94,39 @@ public class CaseController {
     public ResponseEntity<List<StatusHistoryResponse>> getCaseTimeline(@PathVariable UUID id) {
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         List<StatusHistoryResponse> response = caseService.getCaseTimeline(id, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * GET /api/v1/cases/{id}/actions
+     *
+     * US-17, DET-06: returns the workflow actions the current user is
+     * permitted to trigger on this case right now. Drives button
+     * visibility on the case-detail page.
+     */
+    @GetMapping("/{id}/actions")
+    @PreAuthorize("hasAnyRole('AGENT', 'HANDLER', 'SUPERVISOR', 'ADMIN')")
+    public ResponseEntity<List<CaseActionResponse>> getCaseActions(@PathVariable UUID id) {
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        List<CaseActionResponse> response = caseService.getCaseActions(id, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * POST /api/v1/cases/{id}/transition
+     *
+     * WFL-01: executes a workflow transition. Returns 409 Conflict if the
+     * transition is illegal for the case's current status or the
+     * requester's role (handled by IllegalTransitionException).
+     */
+    @PostMapping("/{id}/transition")
+    @PreAuthorize("hasAnyRole('HANDLER', 'SUPERVISOR', 'ADMIN')")
+    public ResponseEntity<CaseResponse> transitionCase(
+            @PathVariable UUID id,
+            @Valid @RequestBody CaseTransitionRequest request) {
+
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        CaseResponse response = caseService.transitionCase(id, userId, request);
         return ResponseEntity.ok(response);
     }
 }
