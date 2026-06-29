@@ -290,7 +290,7 @@ public class CaseServiceImpl implements CaseService {
         history.setToStatus(toStatus);
         history.setAction(request.getAction());
         history.setChangedByUser(requester);
-        history.setComment(rule.requiresComment() ? request.getComment() : null);
+        history.setComment(request.getComment());
         statusHistoryRepository.save(history);
 
         log.info("Case {} transitioned {} -> {} via {}", caseId, fromStatus, toStatus, request.getAction());
