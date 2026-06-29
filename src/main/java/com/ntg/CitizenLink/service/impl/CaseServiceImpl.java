@@ -106,8 +106,28 @@ public class CaseServiceImpl implements CaseService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<CaseResponse> searchCases(CaseSearchRequest filter, UUID createdByUserId) {
-        log.debug("Searching cases for user: {}", createdByUserId);
+    public PagedResponse<CaseResponse> searchCases(CaseSearchRequest filter, UUID requesterId) {
+        log.debug("Searching cases for user: {}", requesterId);
+
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        // Determine visibility filter based on role
+        UUID createdByFilter = null;
+        UUID assignedToFilter = null;
+
+        switch (requester.getRole()) {
+            case ADMIN:
+            case SUPERVISOR:
+                // both null — see all cases
+                break;
+            case HANDLER:
+                assignedToFilter = requesterId;
+                break;
+            default: // AGENT
+                createdByFilter = requesterId;
+                break;
+        }
 
         Pageable pageable = PageRequest.of(
                 filter.getPage(),
@@ -115,7 +135,7 @@ public class CaseServiceImpl implements CaseService {
                 Sort.by(Sort.Direction.DESC, "createdAt")
         );
 
-        CaseSpecification spec = new CaseSpecification(filter, createdByUserId);
+        CaseSpecification spec = new CaseSpecification(filter, createdByFilter, assignedToFilter);
         Page<Case> page = caseRepository.findAll(spec, pageable);
 
         List<CaseResponse> content = page.getContent()
@@ -231,6 +251,19 @@ public class CaseServiceImpl implements CaseService {
                 && (request.getResolutionSummary() == null || request.getResolutionSummary().isBlank())) {
             throw new IllegalTransitionException(
                     "A resolution summary is required for action " + request.getAction());
+        }
+
+        // US-18: handle ASSIGN — set the assigned handler on the case.
+        if (request.getAction() == WorkflowAction.ASSIGN) {
+            if (request.getAssignedToUserId() == null) {
+                throw new IllegalTransitionException("assignedToUserId is required for ASSIGN action");
+            }
+            AppUser handler = userRepository.findById(request.getAssignedToUserId())
+                    .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
+            if (handler.getRole() != UserRole.HANDLER) {
+                throw new IllegalTransitionException("Can only assign to a user with HANDLER role");
+            }
+            found.setAssignedToUser(handler);
         }
 
         CaseStatus fromStatus = found.getStatus();

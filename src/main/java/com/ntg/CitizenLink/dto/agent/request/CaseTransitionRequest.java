@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 /**
  * Request body for POST /api/v1/cases/{id}/transition (US-17, WFL-01).
  *
@@ -22,4 +24,6 @@ public class CaseTransitionRequest {
 
     private String comment;
     private String resolutionSummary;
+
+    private UUID assignedToUserId;
 }
