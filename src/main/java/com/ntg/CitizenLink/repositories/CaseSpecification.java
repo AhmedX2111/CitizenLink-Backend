@@ -14,29 +14,31 @@ import java.util.UUID;
 /**
  * JPA Specification for dynamic Case filtering.
  *
- * VISIBILITY RULE (Phase 1):
- *   createdByUserId is always injected by CaseService from the authenticated
- *   principal — never from the request body. This enforces that an AGENT
- *   can only see cases they created.
- *
- * When the visibility model expands (e.g. SUPERVISOR sees all), remove or
- * conditionally skip the createdByUserId predicate in CaseService.
- * No code changes required here.
+ * Visibility rules:
+ *   ADMIN / SUPERVISOR — see all cases (createdByUserId = null, assignedToUserId = null)
+ *   HANDLER            — see only cases assigned to them (assignedToUserId set)
+ *   AGENT              — see only cases they created (createdByUserId set)
  */
 public class CaseSpecification implements Specification<Case> {
 
     private final CaseSearchRequest filter;
 
     /**
-     * The UUID of the authenticated user.
-     * Always set to enforce Phase 1 visibility.
-     * Set to null to disable the restriction (SUPERVISOR / ADMIN).
+     * When set, filters to cases created by this user (AGENT role).
+     * Null = no createdBy restriction.
      */
     private final UUID createdByUserId;
 
-    public CaseSpecification(CaseSearchRequest filter, UUID createdByUserId) {
+    /**
+     * When set, filters to cases assigned to this user (HANDLER role).
+     * Null = no assignedTo restriction.
+     */
+    private final UUID assignedToUserId;
+
+    public CaseSpecification(CaseSearchRequest filter, UUID createdByUserId, UUID assignedToUserId) {
         this.filter = filter;
         this.createdByUserId = createdByUserId;
+        this.assignedToUserId = assignedToUserId;
     }
 
     @Override
@@ -47,12 +49,19 @@ public class CaseSpecification implements Specification<Case> {
         List<Predicate> predicates = new ArrayList<>();
 
         // ------------------------------------------------------------------
-        // VISIBILITY: restrict to cases created by the authenticated user.
-        // Phase 1 — AGENT sees only their own cases.
+        // VISIBILITY
+        //   ADMIN / SUPERVISOR — both null → no restriction
+        //   AGENT              — createdByUserId set → filter by creator
+        //   HANDLER            — assignedToUserId set → filter by assignee
         // ------------------------------------------------------------------
         if (createdByUserId != null) {
             Join<Case, AppUser> createdBy = root.join("createdByUser", JoinType.INNER);
             predicates.add(cb.equal(createdBy.get("id"), createdByUserId));
+        }
+
+        if (assignedToUserId != null) {
+            Join<Case, AppUser> assignedToVis = root.join("assignedToUser", JoinType.INNER);
+            predicates.add(cb.equal(assignedToVis.get("id"), assignedToUserId));
         }
 
         // ------------------------------------------------------------------
