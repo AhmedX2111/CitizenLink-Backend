@@ -134,5 +134,67 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
         ORDER BY CASE WHEN c.dueAt IS NULL THEN 1 ELSE 0 END, c.dueAt ASC
         """)
     List<MyOpenCaseResponse> findTop5OpenCasesByAssignedUser(@Param("userId") UUID userId,
-                                                              org.springframework.data.domain.Pageable pageable);
+                                                               org.springframework.data.domain.Pageable pageable);
+
+    // ── US-28: CSV export ───────────────────────────────────────────────────
+    /**
+     * Fetch all cases ordered by createdAt DESC.
+     * Uses JOIN FETCH to load all relationships eagerly.
+     */
+    @Query("""
+        SELECT DISTINCT c FROM Case c
+        LEFT JOIN FETCH c.citizen
+        LEFT JOIN FETCH c.category
+        LEFT JOIN FETCH c.department
+        LEFT JOIN FETCH c.createdByUser
+        LEFT JOIN FETCH c.assignedToUser
+        ORDER BY c.createdAt DESC
+        """)
+    List<Case> findAllCasesForReport();
+
+    /**
+     * Fetch cases created on or after a given date.
+     */
+    @Query("""
+        SELECT DISTINCT c FROM Case c
+        LEFT JOIN FETCH c.citizen
+        LEFT JOIN FETCH c.category
+        LEFT JOIN FETCH c.department
+        LEFT JOIN FETCH c.createdByUser
+        LEFT JOIN FETCH c.assignedToUser
+        WHERE c.createdAt >= :startDate
+        ORDER BY c.createdAt DESC
+        """)
+    List<Case> findCasesForReportAfter(@Param("startDate") OffsetDateTime startDate);
+
+    /**
+     * Fetch cases created before a given date.
+     */
+    @Query("""
+        SELECT DISTINCT c FROM Case c
+        LEFT JOIN FETCH c.citizen
+        LEFT JOIN FETCH c.category
+        LEFT JOIN FETCH c.department
+        LEFT JOIN FETCH c.createdByUser
+        LEFT JOIN FETCH c.assignedToUser
+        WHERE c.createdAt < :endDate
+        ORDER BY c.createdAt DESC
+        """)
+    List<Case> findCasesForReportBefore(@Param("endDate") OffsetDateTime endDate);
+
+    /**
+     * Fetch cases within a createdAt date range, ordered by createdAt DESC.
+     */
+    @Query("""
+        SELECT DISTINCT c FROM Case c
+        LEFT JOIN FETCH c.citizen
+        LEFT JOIN FETCH c.category
+        LEFT JOIN FETCH c.department
+        LEFT JOIN FETCH c.createdByUser
+        LEFT JOIN FETCH c.assignedToUser
+        WHERE c.createdAt >= :startDate AND c.createdAt < :endDate
+        ORDER BY c.createdAt DESC
+        """)
+    List<Case> findCasesForReportBetween(@Param("startDate") OffsetDateTime startDate,
+                                         @Param("endDate") OffsetDateTime endDate);
 }
