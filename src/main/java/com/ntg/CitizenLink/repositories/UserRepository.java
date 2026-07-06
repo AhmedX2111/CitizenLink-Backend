@@ -13,12 +13,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Dedicated repository for user-admin queries (US-29).
+ * Dedicated repository for user-admin queries (US-29, US-30, US-31).
  * The existing AppUserRepository is used by security/auth code —
  * keeping admin queries here avoids polluting that class.
  */
 @Repository
 public interface UserRepository extends JpaRepository<AppUser, UUID> {
+
+    boolean existsByUsername(String username);
+
+    boolean existsByEmail(String email);
 
     /**
      * US-29: paginated list with optional role and active filters.
