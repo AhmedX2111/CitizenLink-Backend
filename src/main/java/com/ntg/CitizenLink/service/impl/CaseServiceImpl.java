@@ -293,7 +293,9 @@ public class CaseServiceImpl implements CaseService {
         history.setComment(request.getComment());
         statusHistoryRepository.save(history);
 
-        log.info("Case {} transitioned {} -> {} via {}", caseId, fromStatus, toStatus, request.getAction());
+        log.info("EVENT: CASE_TRANSITION | caseId={} | caseNumber={} | action={} | fromStatus={} | toStatus={} | actorId={} | actorDisplayName={}",
+                caseId, saved.getCaseNumber(), request.getAction(), fromStatus, toStatus,
+                requester.getId(), requester.getDisplayName());
 
         return caseMapper.toResponse(saved);
     }
