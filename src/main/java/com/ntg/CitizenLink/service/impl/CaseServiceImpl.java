@@ -244,24 +244,24 @@ public class CaseServiceImpl implements CaseService {
 
         // 3. WFL-03 / WFL-04: conditionally required fields.
         if (rule.requiresComment() && (request.getComment() == null || request.getComment().isBlank())) {
-            throw new IllegalTransitionException(
+            throw new IllegalTransitionException("MISSING_COMMENT",
                     "A comment/reason is required for action " + request.getAction());
         }
         if (rule.requiresResolutionSummary()
                 && (request.getResolutionSummary() == null || request.getResolutionSummary().isBlank())) {
-            throw new IllegalTransitionException(
+            throw new IllegalTransitionException("MISSING_RESOLUTION_SUMMARY",
                     "A resolution summary is required for action " + request.getAction());
         }
 
         // US-18: handle ASSIGN — set the assigned handler on the case.
         if (request.getAction() == WorkflowAction.ASSIGN) {
             if (request.getAssignedToUserId() == null) {
-                throw new IllegalTransitionException("assignedToUserId is required for ASSIGN action");
+                throw new IllegalTransitionException("INVALID_ASSIGNMENT", "assignedToUserId is required for ASSIGN action");
             }
             AppUser handler = userRepository.findById(request.getAssignedToUserId())
                     .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
             if (handler.getRole() != UserRole.HANDLER) {
-                throw new IllegalTransitionException("Can only assign to a user with HANDLER role");
+                throw new IllegalTransitionException("INVALID_ASSIGNMENT", "Can only assign to a user with HANDLER role");
             }
             found.setAssignedToUser(handler);
         }

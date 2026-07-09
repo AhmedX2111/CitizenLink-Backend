@@ -1,5 +1,7 @@
 package com.ntg.CitizenLink.service.interfaces;
 
+import com.ntg.CitizenLink.dto.agent.request.CreateDepartmentRequest;
+import com.ntg.CitizenLink.dto.agent.request.UpdateDepartmentRequest;
 import com.ntg.CitizenLink.dto.agent.response.DepartmentResponse;
 
 import java.util.List;
@@ -21,4 +23,14 @@ public interface DepartmentService {
      * Check if department exists
      */
     boolean existsById(UUID id);
+
+    /**
+     * Create a new department
+     */
+    DepartmentResponse createDepartment(CreateDepartmentRequest request);
+
+    /**
+     * Update an existing department
+     */
+    DepartmentResponse updateDepartment(UUID id, UpdateDepartmentRequest request);
 }

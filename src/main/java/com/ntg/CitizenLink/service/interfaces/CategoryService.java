@@ -1,5 +1,7 @@
 package com.ntg.CitizenLink.service.interfaces;
 
+import com.ntg.CitizenLink.dto.agent.request.CreateCategoryRequest;
+import com.ntg.CitizenLink.dto.agent.request.UpdateCategoryRequest;
 import com.ntg.CitizenLink.dto.agent.response.CategoryResponse;
 
 import java.util.List;
@@ -21,5 +23,15 @@ public interface CategoryService {
      * Check if category exists
      */
     boolean existsById(UUID id);
+
+    /**
+     * Create a new category
+     */
+    CategoryResponse createCategory(CreateCategoryRequest request);
+
+    /**
+     * Update an existing category
+     */
+    CategoryResponse updateCategory(UUID id, UpdateCategoryRequest request);
 }
 
