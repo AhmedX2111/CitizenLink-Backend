@@ -1,6 +1,8 @@
 package com.ntg.CitizenLink.service.impl;
 
 import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
+import com.ntg.CitizenLink.dto.agent.request.CreateDepartmentRequest;
+import com.ntg.CitizenLink.dto.agent.request.UpdateDepartmentRequest;
 import com.ntg.CitizenLink.dto.agent.response.DepartmentResponse;
 import com.ntg.CitizenLink.entities.Department;
 import com.ntg.CitizenLink.repositories.DepartmentRepository;
@@ -48,6 +50,60 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Transactional(readOnly = true)
     public boolean existsById(UUID id) {
         return departmentRepository.existsById(id);
+    }
+
+    @Override
+    @Transactional
+    public DepartmentResponse createDepartment(CreateDepartmentRequest request) {
+        String code = generateCode(request.getNameEn());
+        log.info("Creating department: nameEn={}, code={}", request.getNameEn(), code);
+
+        Department department = new Department();
+        department.setCode(code);
+        department.setNameEn(request.getNameEn());
+        department.setNameAr(request.getNameAr());
+        department.setActive(request.getActive() != null ? request.getActive() : true);
+
+        Department saved = departmentRepository.save(department);
+        log.info("Department created: id={}, code={}", saved.getId(), saved.getCode());
+        return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public DepartmentResponse updateDepartment(UUID id, UpdateDepartmentRequest request) {
+        log.info("Updating department: id={}", id);
+
+        Department department = departmentRepository.findById(id)
+                .orElseThrow(() -> ResourceNotFoundException.of("Department", id));
+
+        department.setNameEn(request.getNameEn());
+        department.setNameAr(request.getNameAr());
+        department.setActive(request.getActive());
+
+        Department saved = departmentRepository.save(department);
+        log.info("Department updated: id={}, code={}", saved.getId(), saved.getCode());
+        return toResponse(saved);
+    }
+
+    private String generateCode(String nameEn) {
+        String base = nameEn.toUpperCase()
+                .replaceAll("\\s+", "_")
+                .replaceAll("[^A-Z0-9_]", "")
+                .replaceAll("_+", "_")
+                .replaceAll("^_|_$", "");
+        if (base.isEmpty()) base = "DEPARTMENT";
+        if (base.length() > 50) base = base.substring(0, 50);
+
+        String candidate = base;
+        int suffix = 2;
+        while (departmentRepository.findByCode(candidate).isPresent()) {
+            String suffixStr = "_" + suffix;
+            int maxLen = 50 - suffixStr.length();
+            candidate = (base.length() > maxLen ? base.substring(0, maxLen) : base) + suffixStr;
+            suffix++;
+        }
+        return candidate;
     }
 
     /**

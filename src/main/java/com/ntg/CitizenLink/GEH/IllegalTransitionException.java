@@ -11,7 +11,14 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @ResponseStatus(HttpStatus.CONFLICT)
 public class IllegalTransitionException extends RuntimeException {
 
-    public IllegalTransitionException(String message) {
+    private final String code;
+
+    public IllegalTransitionException(String code, String message) {
         super(message);
+        this.code = code;
+    }
+
+    public String getCode() {
+        return code;
     }
 }

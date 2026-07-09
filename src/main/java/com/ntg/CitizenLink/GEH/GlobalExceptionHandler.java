@@ -3,6 +3,7 @@ package com.ntg.CitizenLink.GEH;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
@@ -13,34 +14,28 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.naming.AuthenticationException;
-import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     // -------------------------------------------------------------------------
-    // Validation errors (@Valid failures)
+    // Validation errors (@Valid failures) → 400 BAD_REQUEST
     // -------------------------------------------------------------------------
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> fieldErrors = new HashMap<>();
+        List<FieldErrorDetail> details = new ArrayList<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
-            fieldErrors.put(fe.getField(), fe.getDefaultMessage());
+            details.add(new FieldErrorDetail(fe.getField(), fe.getDefaultMessage()));
         }
         log.warn("Validation failed for {}: {}",
                 ex.getBindingResult().getTarget() != null
                         ? ex.getBindingResult().getTarget().getClass().getSimpleName()
                         : "unknown",
-                fieldErrors);
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.BAD_REQUEST.value(),
-                "Validation failed",
-                fieldErrors,
-                OffsetDateTime.now()
-        );
+                details);
+        ErrorResponse body = new ErrorResponse("VALIDATION_ERROR", "Validation failed", details);
         return ResponseEntity.badRequest().body(body);
     }
 
@@ -50,64 +45,39 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(BadCredentialsException ex) {
         log.warn("Authentication failed: Bad credentials");
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.UNAUTHORIZED.value(),
-                "Invalid username or password",
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("BAD_CREDENTIALS", "Invalid username or password", null);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     @ExceptionHandler(DisabledException.class)
     public ResponseEntity<ErrorResponse> handleDisabledAccount(DisabledException ex) {
         log.warn("Authentication failed: Account disabled");
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.UNAUTHORIZED.value(),
-                "Account is disabled. Please contact support.",
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("ACCOUNT_DISABLED", "Account is disabled. Please contact support.", null);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     @ExceptionHandler(LockedException.class)
     public ResponseEntity<ErrorResponse> handleLockedAccount(LockedException ex) {
         log.warn("Authentication failed: Account locked");
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.UNAUTHORIZED.value(),
-                "Account is locked. Please contact support.",
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("ACCOUNT_LOCKED", "Account is locked. Please contact support.", null);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> handleAuthenticationException(AuthenticationException ex) {
         log.warn("Authentication failed: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.UNAUTHORIZED.value(),
-                "Invalid username or password",
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("AUTHENTICATION_FAILED", "Invalid username or password", null);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     // -------------------------------------------------------------------------
-    // 409 Conflict - Database constraint violation (race condition)
+    // 403 Forbidden - Authorization failure
     // -------------------------------------------------------------------------
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.CONFLICT.value(),
-                "A record with this value already exists.",
-                null,
-                OffsetDateTime.now()
-        );
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse("FORBIDDEN", "Access denied", null);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
     // -------------------------------------------------------------------------
@@ -116,27 +86,34 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
         log.warn("Resource not found: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.NOT_FOUND.value(),
-                ex.getMessage(),
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("NOT_FOUND", ex.getMessage(), null);
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     // -------------------------------------------------------------------------
-    // 409 Conflict - Duplicate Resource
+    // 409 Conflict - Workflow transition violation (WFL-01)
     // -------------------------------------------------------------------------
+    @ExceptionHandler(IllegalTransitionException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalTransition(IllegalTransitionException ex) {
+        log.warn("Illegal transition attempted: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse(ex.getCode(), ex.getMessage(), null);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 409 Conflict - Database constraint / Duplicate resource
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse("DATA_INTEGRITY_VIOLATION", "A record with this value already exists.", null);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateResource(DuplicateResourceException ex) {
         log.warn("Duplicate resource: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.CONFLICT.value(),
-                ex.getMessage(),
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("DUPLICATE_RESOURCE", ex.getMessage(), null);
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
@@ -146,28 +123,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("Bad request: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.BAD_REQUEST.value(),
-                ex.getMessage(),
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("BAD_REQUEST", ex.getMessage(), null);
         return ResponseEntity.badRequest().body(body);
     }
 
     // -------------------------------------------------------------------------
-    // Generic fallback (500 Internal Server Error)
+    // 500 Internal Server Error - Generic fallback
     // -------------------------------------------------------------------------
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
         log.error("Unhandled exception caught by GlobalExceptionHandler", ex);
-
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "An unexpected error occurred",
-                null,
-                OffsetDateTime.now()
-        );
+        ErrorResponse body = new ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred", null);
         return ResponseEntity.internalServerError().body(body);
     }
 
@@ -175,24 +141,13 @@ public class GlobalExceptionHandler {
     // Error envelope
     // -------------------------------------------------------------------------
     public record ErrorResponse(
-            int status,
+            String code,
             String message,
-            Map<String, String> fieldErrors,
-            OffsetDateTime timestamp
+            List<FieldErrorDetail> details
     ) {}
 
-    // -------------------------------------------------------------------------
-    // 409 Conflict - Illegal workflow transition (WFL-01)
-    // -------------------------------------------------------------------------
-    @ExceptionHandler(IllegalTransitionException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalTransition(IllegalTransitionException ex) {
-        log.warn("Illegal transition attempted: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse(
-                HttpStatus.CONFLICT.value(),
-                ex.getMessage(),
-                null,
-                OffsetDateTime.now()
-        );
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
-    }
+    public record FieldErrorDetail(
+            String field,
+            String message
+    ) {}
 }

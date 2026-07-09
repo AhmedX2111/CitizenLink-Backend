@@ -147,11 +147,11 @@ public class CaseWorkflowService {
                 CaseTransitionRule match = RULES.stream()
                 .filter(rule -> rule.fromStatus() == currentStatus && rule.action() == action)
                 .findFirst()
-                .orElseThrow(() -> new IllegalTransitionException(
+                .orElseThrow(() -> new IllegalTransitionException("INVALID_TRANSITION",
                         "Action " + action + " is not valid from status " + currentStatus));
 
         if (!match.allowedRoles().contains(currentUserRole)) {
-            throw new IllegalTransitionException(
+            throw new IllegalTransitionException("ROLE_NOT_ALLOWED",
                     "Role " + currentUserRole + " is not permitted to perform action " + action);
         }
 

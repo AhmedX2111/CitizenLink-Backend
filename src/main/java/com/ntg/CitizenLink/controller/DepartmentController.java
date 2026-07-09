@@ -1,16 +1,19 @@
 package com.ntg.CitizenLink.controller;
 
+import com.ntg.CitizenLink.dto.agent.request.CreateDepartmentRequest;
+import com.ntg.CitizenLink.dto.agent.request.UpdateDepartmentRequest;
 import com.ntg.CitizenLink.dto.agent.response.DepartmentResponse;
-import com.ntg.CitizenLink.entities.Department;
-import com.ntg.CitizenLink.repositories.DepartmentRepository;
 import com.ntg.CitizenLink.service.interfaces.DepartmentService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -29,5 +32,29 @@ public class DepartmentController {
 
         log.info("GET /api/v1/departments - found {} departments", departments.size());
         return ResponseEntity.ok(departments);
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR')")
+    public ResponseEntity<DepartmentResponse> createDepartment(@Valid @RequestBody CreateDepartmentRequest request) {
+        log.info("POST /api/v1/departments - creating department: nameEn={}", request.getNameEn());
+
+        DepartmentResponse response = departmentService.createDepartment(request);
+
+        log.info("POST /api/v1/departments - created department: id={}, code={}", response.getId(), response.getCode());
+        return ResponseEntity.created(URI.create("/api/v1/departments/" + response.getId())).body(response);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR')")
+    public ResponseEntity<DepartmentResponse> updateDepartment(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateDepartmentRequest request) {
+        log.info("PUT /api/v1/departments/{} - updating department", id);
+
+        DepartmentResponse response = departmentService.updateDepartment(id, request);
+
+        log.info("PUT /api/v1/departments/{} - updated successfully", id);
+        return ResponseEntity.ok(response);
     }
 }
