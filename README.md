@@ -2,4 +2,4 @@
 
 ## Documentation
 
-- [Request flow and authentication diagrams](docs/request-flow.md)
+- [Request flow diagrams](docs/request-flow.md)
