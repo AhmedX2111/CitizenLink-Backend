@@ -12,7 +12,8 @@ import java.util.UUID;
  * Never include passwordHash in any response DTO.
  */
 public record AuthResponse(
-        String    token,        // JWT; null on /auth/me
+        String    token,          // access JWT; null on /auth/me
+        String    refreshToken,   // refresh JWT; null on /auth/me
         UUID      id,
         String    username,
         String    displayName,

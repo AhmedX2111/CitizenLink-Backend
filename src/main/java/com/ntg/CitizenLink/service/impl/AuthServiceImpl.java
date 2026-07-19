@@ -19,6 +19,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -47,9 +48,14 @@ public class AuthServiceImpl implements AuthService {
                     user.getUsername(), user.getId(), user.getRole().name());
 
             UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
-            String token = jwtService.generateToken(userDetails, Map.of("role", user.getRole().name()));
+            String accessToken = jwtService.generateToken(userDetails, Map.of("role", user.getRole().name()));
 
-            AuthResponse authResponse = toAuthResponse(token, user);
+            String jti = UUID.randomUUID().toString();
+            String refreshToken = jwtService.generateRefreshToken(user.getUsername(), jti);
+            user.setRefreshTokenJti(jti);
+            appUserRepository.save(user);
+
+            AuthResponse authResponse = toAuthResponse(accessToken, refreshToken, user);
             String encryptedId = idEncryptionService.encryptId(user.getId());
 
             log.info("Login successful for user: {}", user.getUsername());
@@ -70,8 +76,52 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public EncryptedAuthResponse refreshToken(String rawRefreshToken) {
+        String username = jwtService.extractUsername(rawRefreshToken);
+        String jti = jwtService.extractJti(rawRefreshToken);
+        String type = jwtService.extractTokenType(rawRefreshToken);
+
+        if (!"refresh".equals(type)) {
+            log.warn("AUTH EVENT: REFRESH_FAILURE | reason=Invalid token type | type={}", type);
+            throw new IllegalArgumentException("Invalid refresh token");
+        }
+
+        AppUser user = appUserRepository.findByUsername(username)
+                .orElseThrow(() -> {
+                    log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=User not found", username);
+                    return new IllegalArgumentException("Invalid refresh token");
+                });
+
+        if (user.getRefreshTokenJti() == null || !user.getRefreshTokenJti().equals(jti)) {
+            log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=Token revoked or reused", username);
+            user.setRefreshTokenJti(null);
+            appUserRepository.save(user);
+            throw new IllegalArgumentException("Refresh token has been revoked");
+        }
+
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        String newAccessToken = jwtService.generateToken(userDetails, Map.of("role", user.getRole().name()));
+
+        String newJti = UUID.randomUUID().toString();
+        String newRefreshToken = jwtService.generateRefreshToken(username, newJti);
+        user.setRefreshTokenJti(newJti);
+        appUserRepository.save(user);
+
+        log.info("AUTH EVENT: REFRESH_SUCCESS | username={} | userId={}", username, user.getId());
+
+        AuthResponse authResponse = toAuthResponse(newAccessToken, newRefreshToken, user);
+        String encryptedId = idEncryptionService.encryptId(user.getId());
+        return EncryptedAuthResponse.fromAuthResponse(authResponse, encryptedId);
+    }
+
+    @Override
     public void logout(UserDetails userDetails) {
         if (userDetails != null) {
+            appUserRepository.findByUsername(userDetails.getUsername())
+                    .ifPresent(user -> {
+                        user.setRefreshTokenJti(null);
+                        appUserRepository.save(user);
+                    });
             log.info("AUTH EVENT: LOGOUT | username={} | status=SUCCESS", userDetails.getUsername());
             log.info("User logged out: {}", userDetails.getUsername());
         }
@@ -82,7 +132,7 @@ public class AuthServiceImpl implements AuthService {
         AppUser user = appUserRepository.findByUsername(username)
                 .orElseThrow();
 
-        AuthResponse authResponse = toAuthResponse(null, user);
+        AuthResponse authResponse = toAuthResponse(null, null, user);
         String encryptedId = idEncryptionService.encryptId(user.getId());
 
         log.debug("Returning current user with encrypted ID: {}", user.getUsername());
@@ -90,9 +140,10 @@ public class AuthServiceImpl implements AuthService {
         return EncryptedAuthResponse.fromAuthResponse(authResponse, encryptedId);
     }
 
-    private AuthResponse toAuthResponse(String token, AppUser user) {
+    private AuthResponse toAuthResponse(String token, String refreshToken, AppUser user) {
         return new AuthResponse(
                 token,
+                refreshToken,
                 user.getId(),
                 user.getUsername(),
                 user.getDisplayName(),

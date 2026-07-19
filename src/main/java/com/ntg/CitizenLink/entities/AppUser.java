@@ -68,4 +68,7 @@ public class AppUser {
             columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime updatedAt;
 
+    @Column(name = "refresh_token_jti", length = 64)
+    private String refreshTokenJti;
+
 }
