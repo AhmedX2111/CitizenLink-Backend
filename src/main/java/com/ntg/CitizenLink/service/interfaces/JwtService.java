@@ -6,28 +6,19 @@ import java.util.Map;
 
 public interface JwtService {
 
-    /**
-     * Generates a signed JWT for an authenticated user.
-     */
     String generateToken(UserDetails userDetails, Map<String, Object> extraClaims);
 
-    /**
-     * Generates a signed JWT with no extra claims.
-     */
     String generateToken(UserDetails userDetails);
 
-    /**
-     * Validates a token against a UserDetails object.
-     */
+    String generateRefreshToken(String username, String jti);
+
     boolean isTokenValid(String token, UserDetails userDetails);
 
-    /**
-     * Extracts the username from a token.
-     */
     String extractUsername(String token);
 
-    /**
-     * Extracts the role from a token.
-     */
     String extractRole(String token);
+
+    String extractTokenType(String token);
+
+    String extractJti(String token);
 }

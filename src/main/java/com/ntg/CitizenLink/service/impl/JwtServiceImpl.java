@@ -39,10 +39,24 @@ public class JwtServiceImpl implements JwtService {
     }
 
     @Override
+    public String generateRefreshToken(String username, String jti) {
+        return Jwts.builder()
+                .subject(username)
+                .claim("type", "refresh")
+                .claim("jti", jti)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + jwtProperties.refreshExpirationMs()))
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    @Override
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
             final String username = extractUsername(token);
-            return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+            boolean expired = isTokenExpired(token);
+            boolean isRefresh = "refresh".equals(extractTokenType(token));
+            return username.equals(userDetails.getUsername()) && !expired && !isRefresh;
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
@@ -56,6 +70,16 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public String extractRole(String token) {
         return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
+    @Override
+    public String extractTokenType(String token) {
+        return extractClaim(token, claims -> claims.get("type", String.class));
+    }
+
+    @Override
+    public String extractJti(String token) {
+        return extractClaim(token, claims -> claims.get("jti", String.class));
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {

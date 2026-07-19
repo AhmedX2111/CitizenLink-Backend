@@ -2,6 +2,7 @@ package com.ntg.CitizenLink.controller;
 
 import com.ntg.CitizenLink.dto.EncryptedAuthResponse;
 import com.ntg.CitizenLink.dto.LoginRequest;
+import com.ntg.CitizenLink.dto.RefreshTokenRequest;
 import com.ntg.CitizenLink.service.interfaces.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,8 +15,10 @@ import org.springframework.web.bind.annotation.*;
 /**
  * Authentication endpoints (BRD §5.1).
  *
- *   POST /api/v1/auth/login   — public, returns JWT + profile (AUTH-01, AUTH-02)
- *   GET  /api/v1/auth/me      — protected, returns current user profile (AUTH-02)
+ *   POST /api/v1/auth/login    — public, returns access+refresh tokens + profile (AUTH-01, AUTH-02)
+ *   POST /api/v1/auth/refresh  — public, rotates tokens (requires valid refresh token)
+ *   POST /api/v1/auth/logout   — protected, clears refresh token
+ *   GET  /api/v1/auth/me       — protected, returns current user profile (AUTH-02)
  *
  * The controller is intentionally thin — all logic lives in AuthService.
  */
@@ -30,13 +33,24 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<EncryptedAuthResponse> login(@Valid @RequestBody LoginRequest request) {
         log.info("REST request: POST /api/v1/auth/login - username: {}", request.username());
-        log.debug("Login request details - method: POST, endpoint: /login, username: {}", request.username());
 
         long startTime = System.currentTimeMillis();
         EncryptedAuthResponse response = authService.login(request);
         long duration = System.currentTimeMillis() - startTime;
 
         log.info("REST response: POST /api/v1/auth/login - status: 200 OK, duration: {}ms", duration);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<EncryptedAuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        log.info("REST request: POST /api/v1/auth/refresh");
+
+        long startTime = System.currentTimeMillis();
+        EncryptedAuthResponse response = authService.refreshToken(request.refreshToken());
+        long duration = System.currentTimeMillis() - startTime;
+
+        log.info("REST response: POST /api/v1/auth/refresh - status: 200 OK, duration: {}ms", duration);
         return ResponseEntity.ok(response);
     }
 
@@ -55,7 +69,6 @@ public class AuthController {
     public ResponseEntity<EncryptedAuthResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
         String username = userDetails != null ? userDetails.getUsername() : "unknown";
         log.info("REST request: GET /api/v1/auth/me - username: {}", username);
-        log.debug("Fetching current user profile for: {}", username);
 
         long startTime = System.currentTimeMillis();
         EncryptedAuthResponse response = authService.getCurrentUser(userDetails.getUsername());

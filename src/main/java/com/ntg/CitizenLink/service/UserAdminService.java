@@ -123,9 +123,10 @@ public class UserAdminService {
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", id));
 
         user.setActive(!user.getActive());
+        user.setRefreshTokenJti(null);
         AppUser saved = userRepository.save(user);
 
-        log.info("User {} status toggled: active={}", id, saved.getActive());
+        log.info("User {} status toggled: active={}, refresh tokens revoked", id, saved.getActive());
         return toResponse(saved);
     }
 

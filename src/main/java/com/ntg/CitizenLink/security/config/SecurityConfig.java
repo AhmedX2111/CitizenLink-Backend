@@ -72,6 +72,7 @@ public class SecurityConfig {
 
                         // ── Public (no token required) ────────────────────────────
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
 
                         // Swagger/OpenAPI — disable in production via profile if needed
                         .requestMatchers(

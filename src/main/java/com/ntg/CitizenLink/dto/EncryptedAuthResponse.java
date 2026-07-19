@@ -8,7 +8,8 @@ import com.ntg.CitizenLink.enums.UserRole;
  * ID is encrypted to prevent exposure of internal UUIDs.
  */
 public record EncryptedAuthResponse(
-        String    token,           // JWT; null on /auth/me
+        String    token,           // access JWT; null on /auth/me
+        String    refreshToken,    // refresh JWT; null on /auth/me
         @JsonProperty("id")
         String    encryptedId,     // Encrypted ID instead of plain UUID
         String    username,
@@ -17,15 +18,13 @@ public record EncryptedAuthResponse(
         UserRole role
 ) {
 
-    /**
-     * Factory method to create from plain AuthResponse
-     */
     public static EncryptedAuthResponse fromAuthResponse(
             AuthResponse response,
             String encryptedId
     ) {
         return new EncryptedAuthResponse(
                 response.token(),
+                response.refreshToken(),
                 encryptedId,
                 response.username(),
                 response.displayName(),
