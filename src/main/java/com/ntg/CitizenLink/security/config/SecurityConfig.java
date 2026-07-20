@@ -82,7 +82,11 @@ public class SecurityConfig {
                         ).permitAll()
 
                         // ── Role-restricted ───────────────────────────────────────
+                        // Handler listing — SUPERVISOR and ADMIN (used for assignment/reassignment picker)
+                        .requestMatchers("/api/v1/users/handlers").hasAnyRole("SUPERVISOR", "ADMIN")
+
                         // User admin — ADMIN only (BRD USR-02)
+                        // Must come AFTER /handlers so the more specific path wins.
                         .requestMatchers("/api/v1/users/**").hasRole("ADMIN")
 
                         // Reports — ADMIN and SUPERVISOR (BRD §4.3)

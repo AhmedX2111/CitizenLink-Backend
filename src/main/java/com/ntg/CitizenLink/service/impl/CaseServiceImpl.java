@@ -266,6 +266,26 @@ public class CaseServiceImpl implements CaseService {
             found.setAssignedToUser(handler);
         }
 
+        // Handle REASSIGN — replace the current handler without changing status.
+        if (request.getAction() == WorkflowAction.REASSIGN) {
+            if (request.getAssignedToUserId() == null) {
+                throw new IllegalTransitionException("INVALID_REASSIGNMENT", "assignedToUserId is required for REASSIGN action");
+            }
+            AppUser newHandler = userRepository.findById(request.getAssignedToUserId())
+                    .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
+            if (newHandler.getRole() != UserRole.HANDLER) {
+                throw new IllegalTransitionException("INVALID_REASSIGNMENT", "Can only reassign to a user with HANDLER role");
+            }
+            AppUser oldHandler = found.getAssignedToUser();
+            found.setAssignedToUser(newHandler);
+
+            log.info("Case {} reassigned from user {} to user {} by {}",
+                    found.getCaseNumber(),
+                    oldHandler != null ? oldHandler.getId() : "null",
+                    newHandler.getId(),
+                    requester.getUsername());
+        }
+
         CaseStatus fromStatus = found.getStatus();
         CaseStatus toStatus = rule.toStatus();
 

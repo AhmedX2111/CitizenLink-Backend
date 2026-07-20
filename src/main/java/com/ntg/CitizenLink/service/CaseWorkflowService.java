@@ -30,7 +30,13 @@ import java.util.*;
  *   Resolve       | IN_PROGRESS              | RESOLVED      | HANDLER, SUPERVISOR
  *   Close         | RESOLVED                 | CLOSED        | SUPERVISOR, ADMIN
  *   Reopen        | RESOLVED, CLOSED         | IN_PROGRESS   | SUPERVISOR
+ *   Reassign      | ASSIGNED, IN_PROGRESS,    | (same status) | SUPERVISOR, ADMIN
+ *                 | AWAITING_INFO, SUSPENDED  |               |
  *   Cancel        | NEW, ASSIGNED            | CANCELLED     | SUPERVISOR, ADMIN
+ *
+ *   REASSIGN leaves the status unchanged — only updates assignedToUser.
+ *   Used when workload changes, handlers go on leave, or cases need
+ *   redistribution (requires comment for accountability).
  *
  * Note: "Resume" is split into two distinct WorkflowAction values because
  * the underlying action differs by source status (BRD §5.5.2 diagram):
@@ -106,7 +112,30 @@ public class CaseWorkflowService {
             new CaseTransitionRule(
                     WorkflowAction.CANCEL, CaseStatus.ASSIGNED, CaseStatus.CANCELLED,
                     Set.of(UserRole.SUPERVISOR, UserRole.ADMIN),
-                    "cases.actions.cancel", false, false)
+                    "cases.actions.cancel", false, false),
+
+            // "Reassign" — four source statuses where a handler is actively involved
+            // Status stays the same — only the assignee changes.
+            // Comment required for audit trail accountability.
+            new CaseTransitionRule(
+                    WorkflowAction.REASSIGN, CaseStatus.ASSIGNED, CaseStatus.ASSIGNED,
+                    Set.of(UserRole.SUPERVISOR, UserRole.ADMIN),
+                    "cases.actions.reassign", true, false),
+
+            new CaseTransitionRule(
+                    WorkflowAction.REASSIGN, CaseStatus.IN_PROGRESS, CaseStatus.IN_PROGRESS,
+                    Set.of(UserRole.SUPERVISOR, UserRole.ADMIN),
+                    "cases.actions.reassign", true, false),
+
+            new CaseTransitionRule(
+                    WorkflowAction.REASSIGN, CaseStatus.AWAITING_INFO, CaseStatus.AWAITING_INFO,
+                    Set.of(UserRole.SUPERVISOR, UserRole.ADMIN),
+                    "cases.actions.reassign", true, false),
+
+            new CaseTransitionRule(
+                    WorkflowAction.REASSIGN, CaseStatus.SUSPENDED, CaseStatus.SUSPENDED,
+                    Set.of(UserRole.SUPERVISOR, UserRole.ADMIN),
+                    "cases.actions.reassign", true, false)
     );
 
     /**
