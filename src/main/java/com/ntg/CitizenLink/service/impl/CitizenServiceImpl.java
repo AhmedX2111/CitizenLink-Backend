@@ -15,6 +15,7 @@ import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.repositories.CaseRepository;
 import com.ntg.CitizenLink.repositories.CitizenRepository;
+import com.ntg.CitizenLink.security.CaseAccessPolicy;
 import com.ntg.CitizenLink.service.interfaces.CitizenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ public class CitizenServiceImpl implements CitizenService {
     private final CitizenRepository citizenRepository;
     private final AppUserRepository appUserRepository;
     private final CaseRepository caseRepository;
+    private final CaseAccessPolicy caseAccessPolicy;
 
     @Override
     @Transactional(readOnly = true)
@@ -135,25 +137,36 @@ public class CitizenServiceImpl implements CitizenService {
 
     @Override
     @Transactional(readOnly = true)
-    public CitizenProfileResponse getCitizenProfile(UUID id) {
-        log.info("Fetching citizen profile for ID: {}", id);
+    public CitizenProfileResponse getCitizenProfile(UUID id, UUID requesterId) {
+        log.info("Fetching citizen profile for ID: {} by user: {}", id, requesterId);
 
         Citizen citizen = citizenRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.of("Citizen", id));
 
-        long totalCases = caseRepository.countByCitizenId(id);
+        AppUser requester = appUserRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
 
-        long openCases = caseRepository.countByCitizenIdAndStatusNotIn(id,
-                List.of(CaseStatus.RESOLVED, CaseStatus.CLOSED, CaseStatus.CANCELLED));
+        List<Case> allCases = caseRepository.findByCitizenIdOrderByCreatedAtDesc(
+                id, Pageable.unpaged()
+        ).stream()
+                .filter(c -> caseAccessPolicy.canView(c, requester))
+                .collect(Collectors.toList());
 
-        long resolvedCases = caseRepository.countByCitizenIdAndStatusIn(id,
-                List.of(CaseStatus.RESOLVED, CaseStatus.CLOSED));
+        long totalCases = allCases.size();
+        long openCases = allCases.stream()
+                .filter(c -> c.getStatus() != CaseStatus.RESOLVED
+                        && c.getStatus() != CaseStatus.CLOSED
+                        && c.getStatus() != CaseStatus.CANCELLED)
+                .count();
+        long resolvedCases = allCases.stream()
+                .filter(c -> c.getStatus() == CaseStatus.RESOLVED
+                        || c.getStatus() == CaseStatus.CLOSED)
+                .count();
 
-        List<Case> recentCases =
-                caseRepository.findByCitizenIdOrderByCreatedAtDesc(
-                        id,
-                        PageRequest.of(0, 5)
-                );
+        List<Case> recentCases = allCases.stream()
+                .limit(5)
+                .collect(Collectors.toList());
+
         return CitizenProfileResponse.builder()
                 .id(citizen.getId())
                 .fullName(citizen.getFullName())
