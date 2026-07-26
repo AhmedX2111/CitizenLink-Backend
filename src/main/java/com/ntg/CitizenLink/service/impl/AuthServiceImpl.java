@@ -77,9 +77,17 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public EncryptedAuthResponse refreshToken(String rawRefreshToken) {
-        String username = jwtService.extractUsername(rawRefreshToken);
-        String jti = jwtService.extractJti(rawRefreshToken);
-        String type = jwtService.extractTokenType(rawRefreshToken);
+        String username;
+        String jti;
+        String type;
+        try {
+            username = jwtService.extractUsername(rawRefreshToken);
+            jti = jwtService.extractJti(rawRefreshToken);
+            type = jwtService.extractTokenType(rawRefreshToken);
+        } catch (Exception e) {
+            log.warn("AUTH EVENT: REFRESH_FAILURE | reason=Invalid token format");
+            throw new IllegalArgumentException("Invalid refresh token");
+        }
 
         if (!"refresh".equals(type)) {
             log.warn("AUTH EVENT: REFRESH_FAILURE | reason=Invalid token type | type={}", type);
@@ -91,6 +99,13 @@ public class AuthServiceImpl implements AuthService {
                     log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=User not found", username);
                     return new IllegalArgumentException("Invalid refresh token");
                 });
+
+        if (!user.getActive()) {
+            log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=Account is disabled", username);
+            user.setRefreshTokenJti(null);
+            appUserRepository.save(user);
+            throw new IllegalArgumentException("Account is disabled");
+        }
 
         if (user.getRefreshTokenJti() == null || !user.getRefreshTokenJti().equals(jti)) {
             log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=Token revoked or reused", username);

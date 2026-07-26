@@ -80,6 +80,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<ErrorResponse> handleSecurityException(SecurityException ex) {
+        log.warn("Security exception: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse("FORBIDDEN", ex.getMessage(), null);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
     // -------------------------------------------------------------------------
     // 404 Not Found
     // -------------------------------------------------------------------------
