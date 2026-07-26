@@ -57,7 +57,8 @@ public class AttachmentController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/attachments", caseId);
 
-        List<AttachmentResponse> responses = attachmentService.getAttachmentsByCaseId(caseId);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        List<AttachmentResponse> responses = attachmentService.getAttachmentsByCaseId(caseId, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/attachments - found {} attachments", caseId, responses.size());
         return ResponseEntity.ok(responses);
@@ -74,11 +75,13 @@ public class AttachmentController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/attachments/{}/download", caseId, attachmentId);
 
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+
         // Get attachment metadata first
-        AttachmentResponse attachment = attachmentService.getAttachmentById(attachmentId);
+        AttachmentResponse attachment = attachmentService.getAttachmentById(caseId, attachmentId, userId);
 
         // Download the file
-        Resource resource = attachmentService.downloadAttachment(attachmentId);
+        Resource resource = attachmentService.downloadAttachment(caseId, attachmentId, userId);
 
         // Set headers for download
         String encodedFileName = URLEncoder.encode(attachment.getOriginalFileName(), StandardCharsets.UTF_8)
@@ -109,7 +112,8 @@ public class AttachmentController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/attachments/{}", caseId, attachmentId);
 
-        AttachmentResponse response = attachmentService.getAttachmentById(attachmentId);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        AttachmentResponse response = attachmentService.getAttachmentById(caseId, attachmentId, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/attachments/{} - attachment found", caseId, attachmentId);
         return ResponseEntity.ok(response);
@@ -127,7 +131,7 @@ public class AttachmentController {
         log.info("REST request: DELETE /api/v1/cases/{}/attachments/{}", caseId, attachmentId);
 
         UUID userId = securityContextHelper.getAuthenticatedUserId();
-        attachmentService.deleteAttachment(attachmentId, userId);
+        attachmentService.deleteAttachment(caseId, attachmentId, userId);
 
         log.info("REST response: DELETE /api/v1/cases/{}/attachments/{} - status: 204 NO CONTENT", caseId, attachmentId);
         return ResponseEntity.noContent().build();
@@ -143,7 +147,8 @@ public class AttachmentController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/attachments/count", caseId);
 
-        long count = attachmentService.countAttachmentsByCaseId(caseId);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        long count = attachmentService.countAttachmentsByCaseId(caseId, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/attachments/count - {}", caseId, count);
         return ResponseEntity.ok(count);

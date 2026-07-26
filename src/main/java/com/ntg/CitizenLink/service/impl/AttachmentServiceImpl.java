@@ -9,6 +9,7 @@ import com.ntg.CitizenLink.entities.Case;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.repositories.AttachmentRepository;
 import com.ntg.CitizenLink.repositories.CaseRepository;
+import com.ntg.CitizenLink.security.CaseAccessPolicy;
 import com.ntg.CitizenLink.service.FileStorageService;
 import com.ntg.CitizenLink.service.interfaces.AttachmentService;
 import lombok.RequiredArgsConstructor;
@@ -35,17 +36,15 @@ public class AttachmentServiceImpl implements AttachmentService {
     private final AppUserRepository appUserRepository;
     private final FileStorageService fileStorageService;
     private final FileStorageProperties fileStorageProperties;
+    private final CaseAccessPolicy caseAccessPolicy;
 
     @Override
     @Transactional
     public AttachmentResponse uploadAttachment(UUID caseId, MultipartFile file, UUID uploadedByUserId) {
         log.info("Uploading attachment for case: {} by user: {}", caseId, uploadedByUserId);
 
-        // Validate case exists
-        Case caseEntity = caseRepository.findById(caseId)
-                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+        Case caseEntity = requireAccessibleCase(caseId, uploadedByUserId);
 
-        // Validate user exists
         AppUser uploadedBy = appUserRepository.findById(uploadedByUserId)
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", uploadedByUserId));
 
@@ -80,12 +79,10 @@ public class AttachmentServiceImpl implements AttachmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AttachmentResponse> getAttachmentsByCaseId(UUID caseId) {
+    public List<AttachmentResponse> getAttachmentsByCaseId(UUID caseId, UUID requesterId) {
         log.debug("Fetching attachments for case: {}", caseId);
 
-        if (!caseRepository.existsById(caseId)) {
-            throw ResourceNotFoundException.of("Case", caseId);
-        }
+        requireAccessibleCase(caseId, requesterId);
 
         List<Attachment> attachments = attachmentRepository.findByCaseEntityIdOrderByCreatedAtDesc(caseId);
 
@@ -96,11 +93,17 @@ public class AttachmentServiceImpl implements AttachmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Resource downloadAttachment(UUID attachmentId) {
-        log.info("Downloading attachment: {}", attachmentId);
+    public Resource downloadAttachment(UUID caseId, UUID attachmentId, UUID requesterId) {
+        log.info("Downloading attachment: {} from case: {}", attachmentId, caseId);
 
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Attachment", attachmentId));
+
+        if (!attachment.getCaseEntity().getId().equals(caseId)) {
+            throw ResourceNotFoundException.of("Attachment", attachmentId);
+        }
+
+        requireAccessibleCase(caseId, requesterId);
 
         try {
             Path filePath = fileStorageService.loadFile(attachment.getStoredFileName());
@@ -122,22 +125,34 @@ public class AttachmentServiceImpl implements AttachmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public AttachmentResponse getAttachmentById(UUID attachmentId) {
-        log.debug("Fetching attachment by ID: {}", attachmentId);
+    public AttachmentResponse getAttachmentById(UUID caseId, UUID attachmentId, UUID requesterId) {
+        log.debug("Fetching attachment by ID: {} in case: {}", attachmentId, caseId);
 
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Attachment", attachmentId));
+
+        if (!attachment.getCaseEntity().getId().equals(caseId)) {
+            throw ResourceNotFoundException.of("Attachment", attachmentId);
+        }
+
+        requireAccessibleCase(caseId, requesterId);
 
         return toResponse(attachment);
     }
 
     @Override
     @Transactional
-    public void deleteAttachment(UUID attachmentId, UUID userId) {
-        log.info("Deleting attachment: {} by user: {}", attachmentId, userId);
+    public void deleteAttachment(UUID caseId, UUID attachmentId, UUID userId) {
+        log.info("Deleting attachment: {} from case: {} by user: {}", attachmentId, caseId, userId);
 
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Attachment", attachmentId));
+
+        if (!attachment.getCaseEntity().getId().equals(caseId)) {
+            throw ResourceNotFoundException.of("Attachment", attachmentId);
+        }
+
+        requireAccessibleCase(caseId, userId);
 
         // Check if user is the uploader or admin
         if (!attachment.getUploadedByUser().getId().equals(userId)) {
@@ -166,8 +181,21 @@ public class AttachmentServiceImpl implements AttachmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public long countAttachmentsByCaseId(UUID caseId) {
+    public long countAttachmentsByCaseId(UUID caseId, UUID requesterId) {
+        requireAccessibleCase(caseId, requesterId);
         return attachmentRepository.countByCaseEntityId(caseId);
+    }
+
+    private Case requireAccessibleCase(UUID caseId, UUID requesterId) {
+        Case caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+        AppUser requester = appUserRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+        if (!caseAccessPolicy.canView(caseEntity, requester)) {
+            log.warn("User {} attempted to access case {} without permission", requesterId, caseId);
+            throw ResourceNotFoundException.of("Case", caseId);
+        }
+        return caseEntity;
     }
 
     /**

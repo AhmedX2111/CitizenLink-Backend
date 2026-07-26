@@ -56,7 +56,8 @@ public class CaseNoteController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/notes", caseId);
 
-        List<NoteResponse> responses = caseNoteService.getNotesByCaseId(caseId);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        List<NoteResponse> responses = caseNoteService.getNotesByCaseId(caseId, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/notes - found {} notes", caseId, responses.size());
         return ResponseEntity.ok(responses);
@@ -74,8 +75,9 @@ public class CaseNoteController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/notes/paginated - page: {}, size: {}", caseId, page, size);
 
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<NoteResponse> responses = caseNoteService.getNotesByCaseId(caseId, pageable);
+        Page<NoteResponse> responses = caseNoteService.getNotesByCaseId(caseId, pageable, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/notes/paginated - total: {}", caseId, responses.getTotalElements());
         return ResponseEntity.ok(responses);
@@ -92,7 +94,8 @@ public class CaseNoteController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/notes/{}", caseId, noteId);
 
-        NoteResponse response = caseNoteService.getNoteById(noteId);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        NoteResponse response = caseNoteService.getNoteById(caseId, noteId, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/notes/{} - note found", caseId, noteId);
         return ResponseEntity.ok(response);
@@ -111,7 +114,7 @@ public class CaseNoteController {
         log.info("REST request: PUT /api/v1/cases/{}/notes/{}", caseId, noteId);
 
         UUID userId = securityContextHelper.getAuthenticatedUserId();
-        NoteResponse response = caseNoteService.updateNote(noteId, request, userId);
+        NoteResponse response = caseNoteService.updateNote(caseId, noteId, request, userId);
 
         log.info("REST response: PUT /api/v1/cases/{}/notes/{} - note updated", caseId, noteId);
         return ResponseEntity.ok(response);
@@ -129,7 +132,7 @@ public class CaseNoteController {
         log.info("REST request: DELETE /api/v1/cases/{}/notes/{}", caseId, noteId);
 
         UUID userId = securityContextHelper.getAuthenticatedUserId();
-        caseNoteService.deleteNote(noteId, userId);
+        caseNoteService.deleteNote(caseId, noteId, userId);
 
         log.info("REST response: DELETE /api/v1/cases/{}/notes/{} - status: 204 NO CONTENT", caseId, noteId);
         return ResponseEntity.noContent().build();
@@ -145,7 +148,8 @@ public class CaseNoteController {
     ) {
         log.info("REST request: GET /api/v1/cases/{}/notes/count", caseId);
 
-        long count = caseNoteService.countNotesByCaseId(caseId);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        long count = caseNoteService.countNotesByCaseId(caseId, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/notes/count - {}", caseId, count);
         return ResponseEntity.ok(count);

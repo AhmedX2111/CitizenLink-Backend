@@ -17,25 +17,25 @@ public interface AttachmentService {
     /**
      * Get all attachments for a case
      */
-    List<AttachmentResponse> getAttachmentsByCaseId(UUID caseId);
+    List<AttachmentResponse> getAttachmentsByCaseId(UUID caseId, UUID requesterId);
 
     /**
      * Download an attachment by ID
      */
-    Resource downloadAttachment(UUID attachmentId);
+    Resource downloadAttachment(UUID caseId, UUID attachmentId, UUID requesterId);
 
     /**
      * Get attachment by ID
      */
-    AttachmentResponse getAttachmentById(UUID attachmentId);
+    AttachmentResponse getAttachmentById(UUID caseId, UUID attachmentId, UUID requesterId);
 
     /**
      * Delete an attachment
      */
-    void deleteAttachment(UUID attachmentId, UUID userId);
+    void deleteAttachment(UUID caseId, UUID attachmentId, UUID userId);
 
     /**
      * Count attachments for a case
      */
-    long countAttachmentsByCaseId(UUID caseId);
+    long countAttachmentsByCaseId(UUID caseId, UUID requesterId);
 }

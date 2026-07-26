@@ -18,30 +18,30 @@ public interface CaseNoteService {
     /**
      * Get all notes for a case (newest first)
      */
-    List<NoteResponse> getNotesByCaseId(UUID caseId);
+    List<NoteResponse> getNotesByCaseId(UUID caseId, UUID requesterId);
 
     /**
      * Get paginated notes for a case
      */
-    Page<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable);
+    Page<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable, UUID requesterId);
 
     /**
      * Get note by ID
      */
-    NoteResponse getNoteById(UUID noteId);
+    NoteResponse getNoteById(UUID caseId, UUID noteId, UUID requesterId);
 
     /**
      * Update a note
      */
-    NoteResponse updateNote(UUID noteId, AddNoteRequest request, UUID userId);
+    NoteResponse updateNote(UUID caseId, UUID noteId, AddNoteRequest request, UUID userId);
 
     /**
      * Delete a note
      */
-    void deleteNote(UUID noteId, UUID userId);
+    void deleteNote(UUID caseId, UUID noteId, UUID userId);
 
     /**
      * Count notes for a case
      */
-    long countNotesByCaseId(UUID caseId);
+    long countNotesByCaseId(UUID caseId, UUID requesterId);
 }

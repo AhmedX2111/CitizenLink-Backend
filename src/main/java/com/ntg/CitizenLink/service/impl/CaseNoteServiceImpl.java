@@ -9,6 +9,7 @@ import com.ntg.CitizenLink.entities.CaseNote;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.repositories.CaseNoteRepository;
 import com.ntg.CitizenLink.repositories.CaseRepository;
+import com.ntg.CitizenLink.security.CaseAccessPolicy;
 import com.ntg.CitizenLink.service.interfaces.CaseNoteService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,17 +30,15 @@ public class CaseNoteServiceImpl implements CaseNoteService {
     private final CaseNoteRepository caseNoteRepository;
     private final CaseRepository caseRepository;
     private final AppUserRepository appUserRepository;
+    private final CaseAccessPolicy caseAccessPolicy;
 
     @Override
     @Transactional
     public NoteResponse addNote(UUID caseId, AddNoteRequest request, UUID authorId) {
         log.info("Adding note to case: {} by user: {}", caseId, authorId);
 
-        // Validate case exists
-        Case caseEntity = caseRepository.findById(caseId)
-                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+        Case caseEntity = requireAccessibleCase(caseId, authorId);
 
-        // Validate author exists
         AppUser author = appUserRepository.findById(authorId)
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", authorId));
 
@@ -59,13 +58,10 @@ public class CaseNoteServiceImpl implements CaseNoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<NoteResponse> getNotesByCaseId(UUID caseId) {
+    public List<NoteResponse> getNotesByCaseId(UUID caseId, UUID requesterId) {
         log.debug("Fetching notes for case: {}", caseId);
 
-        // Verify case exists
-        if (!caseRepository.existsById(caseId)) {
-            throw ResourceNotFoundException.of("Case", caseId);
-        }
+        requireAccessibleCase(caseId, requesterId);
 
         List<CaseNote> notes = caseNoteRepository.findByCaseIdOrderByCreatedAtDesc(caseId);
 
@@ -76,12 +72,10 @@ public class CaseNoteServiceImpl implements CaseNoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable) {
+    public Page<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable, UUID requesterId) {
         log.debug("Fetching paginated notes for case: {}", caseId);
 
-        if (!caseRepository.existsById(caseId)) {
-            throw ResourceNotFoundException.of("Case", caseId);
-        }
+        requireAccessibleCase(caseId, requesterId);
 
         Page<CaseNote> notes = caseNoteRepository.findByCaseIdOrderByCreatedAtDesc(caseId, pageable);
 
@@ -90,32 +84,41 @@ public class CaseNoteServiceImpl implements CaseNoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public NoteResponse getNoteById(UUID noteId) {
-        log.debug("Fetching note by ID: {}", noteId);
+    public NoteResponse getNoteById(UUID caseId, UUID noteId, UUID requesterId) {
+        log.debug("Fetching note by ID: {} in case: {}", noteId, caseId);
 
         CaseNote note = caseNoteRepository.findById(noteId)
                 .orElseThrow(() -> ResourceNotFoundException.of("CaseNote", noteId));
+
+        if (!note.getCaseEntity().getId().equals(caseId)) {
+            throw ResourceNotFoundException.of("CaseNote", noteId);
+        }
+
+        requireAccessibleCase(caseId, requesterId);
 
         return toResponse(note);
     }
 
     @Override
     @Transactional
-    public NoteResponse updateNote(UUID noteId, AddNoteRequest request, UUID userId) {
-        log.info("Updating note: {} by user: {}", noteId, userId);
+    public NoteResponse updateNote(UUID caseId, UUID noteId, AddNoteRequest request, UUID userId) {
+        log.info("Updating note: {} in case: {} by user: {}", noteId, caseId, userId);
 
         CaseNote note = caseNoteRepository.findById(noteId)
                 .orElseThrow(() -> ResourceNotFoundException.of("CaseNote", noteId));
 
+        if (!note.getCaseEntity().getId().equals(caseId)) {
+            throw ResourceNotFoundException.of("CaseNote", noteId);
+        }
+
+        requireAccessibleCase(caseId, userId);
+
         // Check if user is the author (or admin)
         if (!note.getAuthor().getId().equals(userId)) {
-            // Check if user is admin (optional - you can add admin override)
             AppUser user = appUserRepository.findById(userId)
                     .orElseThrow(() -> ResourceNotFoundException.of("AppUser", userId));
 
-            // Allow only if user is the author or ADMIN
-            if (!note.getAuthor().getId().equals(userId) &&
-                    !"ADMIN".equals(user.getRole().name())) {
+            if (!"ADMIN".equals(user.getRole().name())) {
                 throw new SecurityException("You are not authorized to update this note");
             }
         }
@@ -134,11 +137,17 @@ public class CaseNoteServiceImpl implements CaseNoteService {
 
     @Override
     @Transactional
-    public void deleteNote(UUID noteId, UUID userId) {
-        log.info("Deleting note: {} by user: {}", noteId, userId);
+    public void deleteNote(UUID caseId, UUID noteId, UUID userId) {
+        log.info("Deleting note: {} in case: {} by user: {}", noteId, caseId, userId);
 
         CaseNote note = caseNoteRepository.findById(noteId)
                 .orElseThrow(() -> ResourceNotFoundException.of("CaseNote", noteId));
+
+        if (!note.getCaseEntity().getId().equals(caseId)) {
+            throw ResourceNotFoundException.of("CaseNote", noteId);
+        }
+
+        requireAccessibleCase(caseId, userId);
 
         // Check if user is the author (or admin)
         if (!note.getAuthor().getId().equals(userId)) {
@@ -157,8 +166,21 @@ public class CaseNoteServiceImpl implements CaseNoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public long countNotesByCaseId(UUID caseId) {
+    public long countNotesByCaseId(UUID caseId, UUID requesterId) {
+        requireAccessibleCase(caseId, requesterId);
         return caseNoteRepository.countByCaseEntityId(caseId);
+    }
+
+    private Case requireAccessibleCase(UUID caseId, UUID requesterId) {
+        Case caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+        AppUser requester = appUserRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+        if (!caseAccessPolicy.canView(caseEntity, requester)) {
+            log.warn("User {} attempted to access case {} without permission", requesterId, caseId);
+            throw ResourceNotFoundException.of("Case", caseId);
+        }
+        return caseEntity;
     }
 
     /**
