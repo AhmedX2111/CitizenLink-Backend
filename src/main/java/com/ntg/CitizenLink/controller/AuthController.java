@@ -7,6 +7,7 @@ import com.ntg.CitizenLink.service.interfaces.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -67,8 +68,12 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<EncryptedAuthResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
-        String username = userDetails != null ? userDetails.getUsername() : "unknown";
-        log.info("REST request: GET /api/v1/auth/me - username: {}", username);
+        if (userDetails == null) {
+            log.warn("REST request: GET /api/v1/auth/me - no authentication");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.info("REST request: GET /api/v1/auth/me - username: {}", userDetails.getUsername());
 
         long startTime = System.currentTimeMillis();
         EncryptedAuthResponse response = authService.getCurrentUser(userDetails.getUsername());

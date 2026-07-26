@@ -24,8 +24,9 @@ public interface CitizenService {
 
     /**
      * Get citizen profile with case history (Citizen 360).
+     * Cases are filtered through CaseAccessPolicy for the requesting user.
      */
-    CitizenProfileResponse getCitizenProfile(UUID id);
+    CitizenProfileResponse getCitizenProfile(UUID id, UUID requesterId);
 
     /**
      * Get citizen by ID with case count.

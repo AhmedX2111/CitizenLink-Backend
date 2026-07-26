@@ -78,7 +78,8 @@ public class CitizenController {
     public ResponseEntity<CitizenProfileResponse> getCitizen360(@PathVariable UUID id) {
         log.info("GET /api/v1/citizens/{}/profile", id);
 
-        CitizenProfileResponse response = citizenService.getCitizenProfile(id);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        CitizenProfileResponse response = citizenService.getCitizenProfile(id, userId);
 
         return ResponseEntity.ok(response);
     }
