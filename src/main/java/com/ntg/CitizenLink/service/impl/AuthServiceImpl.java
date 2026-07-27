@@ -4,6 +4,7 @@ import com.ntg.CitizenLink.dto.AuthResponse;
 import com.ntg.CitizenLink.dto.EncryptedAuthResponse;
 import com.ntg.CitizenLink.dto.LoginRequest;
 import com.ntg.CitizenLink.entities.AppUser;
+import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.service.interfaces.AuthService;
 import com.ntg.CitizenLink.service.interfaces.IdEncryptionService;
@@ -42,7 +43,7 @@ public class AuthServiceImpl implements AuthService {
             );
 
             AppUser user = appUserRepository.findByUsername(request.username())
-                    .orElseThrow();
+                    .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
             log.info("AUTH EVENT: LOGIN_SUCCESS | username={} | userId={} | role={} | status=SUCCESS",
                     user.getUsername(), user.getId(), user.getRole().name());
@@ -145,7 +146,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public EncryptedAuthResponse getCurrentUser(String username) {
         AppUser user = appUserRepository.findByUsername(username)
-                .orElseThrow();
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", username));
 
         AuthResponse authResponse = toAuthResponse(null, null, user);
         String encryptedId = idEncryptionService.encryptId(user.getId());

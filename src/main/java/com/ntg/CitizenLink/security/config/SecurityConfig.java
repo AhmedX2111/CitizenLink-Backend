@@ -63,6 +63,9 @@ public class SecurityConfig {
                 // Disable CSRF — not needed for stateless JWT APIs
                 .csrf(AbstractHttpConfigurer::disable)
 
+                // Enable CORS — uses CorsConfigurationSource bean from CorsConfig
+                .cors(cors -> {})
+
                 // Stateless — Spring Security will never create an HttpSession
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

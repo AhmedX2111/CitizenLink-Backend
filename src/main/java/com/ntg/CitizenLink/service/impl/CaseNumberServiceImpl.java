@@ -31,7 +31,8 @@ public class CaseNumberServiceImpl implements CaseNumberService {
         seqRepository.flush();
 
         int nextSeq = seqRepository.findByYearForUpdate(year)
-                .orElseThrow()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Failed to read case number sequence after save for year " + year))
                 .getLastSeq();
 
         String caseNumber = String.format("CASE-%d-%05d", year, nextSeq);

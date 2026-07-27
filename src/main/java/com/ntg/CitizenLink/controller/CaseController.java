@@ -91,6 +91,7 @@ public class CaseController {
      * Same Phase 1 visibility rule as getCaseById — 404 if not the creator.
      */
     @GetMapping("/{id}/timeline")
+    @PreAuthorize("hasAnyRole('AGENT', 'HANDLER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<List<StatusHistoryResponse>> getCaseTimeline(@PathVariable UUID id) {
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         List<StatusHistoryResponse> response = caseService.getCaseTimeline(id, userId);
