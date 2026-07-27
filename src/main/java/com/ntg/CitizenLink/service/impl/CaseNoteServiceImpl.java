@@ -1,6 +1,6 @@
 package com.ntg.CitizenLink.service.impl;
 
-import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
+import com.ntg.CitizenLink.exception.ResourceNotFoundException;
 import com.ntg.CitizenLink.dto.agent.request.AddNoteRequest;
 import com.ntg.CitizenLink.dto.agent.response.NoteResponse;
 import com.ntg.CitizenLink.entities.AppUser;

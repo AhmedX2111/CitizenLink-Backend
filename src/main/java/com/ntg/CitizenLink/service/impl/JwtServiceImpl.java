@@ -14,6 +14,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 @Service
@@ -27,6 +28,7 @@ public class JwtServiceImpl implements JwtService {
         return Jwts.builder()
                 .claims(extraClaims)
                 .subject(userDetails.getUsername())
+                .claim("jti", UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + jwtProperties.expirationMs()))
                 .signWith(getSigningKey())
@@ -82,12 +84,17 @@ public class JwtServiceImpl implements JwtService {
         return extractClaim(token, claims -> claims.get("jti", String.class));
     }
 
+    @Override
+    public Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         return claimsResolver.apply(extractAllClaims(token));
     }
 
     private boolean isTokenExpired(String token) {
-        return extractClaim(token, Claims::getExpiration).before(new Date());
+        return extractExpiration(token).before(new Date());
     }
 
     private Claims extractAllClaims(String token) {

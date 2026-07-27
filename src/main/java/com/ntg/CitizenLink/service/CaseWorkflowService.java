@@ -1,6 +1,6 @@
 package com.ntg.CitizenLink.service;
 
-import com.ntg.CitizenLink.GEH.IllegalTransitionException;
+import com.ntg.CitizenLink.exception.IllegalTransitionException;
 import com.ntg.CitizenLink.dto.agent.response.CaseActionResponse;
 import com.ntg.CitizenLink.entities.AppUser;
 import com.ntg.CitizenLink.entities.Case;

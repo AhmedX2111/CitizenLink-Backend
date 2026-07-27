@@ -33,16 +33,7 @@ public class UserAdminController {
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PagedResponse<UserResponse>> getUsers(
-            @RequestParam(required = false) UserRole role,
-            @RequestParam(required = false) Boolean active,
-            @RequestParam(defaultValue = "0")  int page,
-            @RequestParam(defaultValue = "20") int size) {
-
-        UserSearchRequest request = new UserSearchRequest();
-        request.setRole(role);
-        request.setActive(active);
-        request.setPage(page);
-        request.setSize(size);
+            @Valid UserSearchRequest request) {
 
         return ResponseEntity.ok(userAdminService.getUsers(request));
     }

@@ -11,8 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.Arrays;
-import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -57,12 +55,10 @@ public class FileStorageService {
      * Validate file before storing
      */
     private void validateFile(MultipartFile file) {
-        // Check if file is empty
         if (file.isEmpty()) {
             throw new IllegalArgumentException("File is empty");
         }
 
-        // Check file size
         long maxSize = fileStorageProperties.getMaxFileSize();
         if (file.getSize() > maxSize) {
             throw new IllegalArgumentException(
@@ -70,53 +66,19 @@ public class FileStorageService {
                             maxSize / (1024 * 1024))
             );
         }
-
-        // Check file type
-        String mimeType = file.getContentType();
-        String originalFileName = file.getOriginalFilename();
-
-        // Check MIME type
-        List<String> allowedMimeTypes = Arrays.asList(fileStorageProperties.getAllowedMimeTypes());
-        if (mimeType == null || !allowedMimeTypes.contains(mimeType)) {
-            // Check by extension as fallback
-            if (originalFileName == null || !isAllowedExtension(originalFileName)) {
-                throw new IllegalArgumentException(
-                        String.format("File type not allowed. Allowed types: %s",
-                                String.join(", ", allowedMimeTypes))
-                );
-            }
-        }
-
-        // Check by extension
-        if (originalFileName == null || !isAllowedExtension(originalFileName)) {
-            throw new IllegalArgumentException(
-                    String.format("File type not allowed. Allowed extensions: %s",
-                            String.join(", ", fileStorageProperties.getAllowedExtensions()))
-            );
-        }
-
-        log.debug("File validated: {} (MIME: {}, Size: {} bytes)",
-                originalFileName, mimeType, file.getSize());
     }
 
     /**
-     * Check if file extension is allowed
-     */
-    private boolean isAllowedExtension(String fileName) {
-        if (fileName == null) {
-            return false;
-        }
-        String lowerFileName = fileName.toLowerCase();
-        return Arrays.stream(fileStorageProperties.getAllowedExtensions())
-                .anyMatch(lowerFileName::endsWith);
-    }
-
-    /**
-     * Load file from disk
+     * Load file from disk with path traversal protection.
      */
     public Path loadFile(String storedFileName) {
-        Path uploadPath = Paths.get(fileStorageProperties.getUploadDir());
-        Path filePath = uploadPath.resolve(storedFileName);
+        Path uploadDir = Paths.get(fileStorageProperties.getUploadDir())
+                .toAbsolutePath().normalize();
+        Path filePath = uploadDir.resolve(storedFileName).normalize();
+
+        if (!filePath.startsWith(uploadDir)) {
+            throw new SecurityException("Path traversal attempt detected");
+        }
 
         if (!Files.exists(filePath)) {
             throw new IllegalArgumentException("File not found: " + storedFileName);
@@ -126,11 +88,16 @@ public class FileStorageService {
     }
 
     /**
-     * Delete file from disk
+     * Delete file from disk with path traversal protection.
      */
     public void deleteFile(String storedFileName) throws IOException {
-        Path uploadPath = Paths.get(fileStorageProperties.getUploadDir());
-        Path filePath = uploadPath.resolve(storedFileName);
+        Path uploadDir = Paths.get(fileStorageProperties.getUploadDir())
+                .toAbsolutePath().normalize();
+        Path filePath = uploadDir.resolve(storedFileName).normalize();
+
+        if (!filePath.startsWith(uploadDir)) {
+            throw new SecurityException("Path traversal attempt detected");
+        }
 
         if (Files.exists(filePath)) {
             Files.delete(filePath);

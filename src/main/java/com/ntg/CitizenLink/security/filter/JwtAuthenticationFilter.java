@@ -1,5 +1,6 @@
 package com.ntg.CitizenLink.security.filter;
 
+import com.ntg.CitizenLink.security.JwtBlocklist;
 import com.ntg.CitizenLink.service.interfaces.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -43,6 +44,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String AUTH_HEADER   = "Authorization";
 
     private final JwtService          jwtService;
+    private final JwtBlocklist        jwtBlocklist;
     private final UserDetailsService  userDetailsService;
 
     @Override
@@ -77,6 +79,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
             if (jwtService.isTokenValid(jwt, userDetails)) {
+                String jti = jwtService.extractJti(jwt);
+                if (jti != null && jwtBlocklist.isBlocked(jti)) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 // 4. Build authentication token and attach request details (IP, session id, etc.)
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(

@@ -1,6 +1,6 @@
 package com.ntg.CitizenLink.service.impl;
 
-import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
+import com.ntg.CitizenLink.exception.ResourceNotFoundException;
 import com.ntg.CitizenLink.config.FileStorageProperties;
 import com.ntg.CitizenLink.dto.agent.response.AttachmentResponse;
 import com.ntg.CitizenLink.entities.AppUser;
@@ -12,6 +12,7 @@ import com.ntg.CitizenLink.repositories.CaseRepository;
 import com.ntg.CitizenLink.security.CaseAccessPolicy;
 import com.ntg.CitizenLink.service.FileStorageService;
 import com.ntg.CitizenLink.service.interfaces.AttachmentService;
+import org.apache.tika.Tika;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -49,10 +50,24 @@ public class AttachmentServiceImpl implements AttachmentService {
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", uploadedByUserId));
 
         try {
+            // Detect actual MIME type from file content (magic bytes)
+            Tika tika = new Tika();
+            String detectedMimeType = tika.detect(file.getInputStream());
+
+            List<String> allowedTypes = List.of(
+                    "application/pdf",
+                    "image/png",
+                    "image/jpeg",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            );
+
+            if (!allowedTypes.contains(detectedMimeType)) {
+                throw new IllegalArgumentException("File type not allowed: " + detectedMimeType);
+            }
+
             // Store file on disk
             String storedFileName = fileStorageService.storeFile(file);
             String originalFileName = file.getOriginalFilename();
-            String mimeType = file.getContentType();
             long fileSize = file.getSize();
 
             // Create attachment entity
@@ -60,7 +75,7 @@ public class AttachmentServiceImpl implements AttachmentService {
             attachment.setCaseEntity(caseEntity);
             attachment.setOriginalFileName(originalFileName);
             attachment.setStoredFileName(storedFileName);
-            attachment.setMimeType(mimeType != null ? mimeType : "application/octet-stream");
+            attachment.setMimeType(detectedMimeType);
             attachment.setFileSizeBytes(fileSize);
             attachment.setStoragePath(fileStorageProperties.getUploadDir() + "/" + storedFileName);
             attachment.setUploadedByUser(uploadedBy);

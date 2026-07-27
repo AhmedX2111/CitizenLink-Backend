@@ -2,9 +2,13 @@ package com.ntg.CitizenLink.controller;
 
 import com.ntg.CitizenLink.dto.EncryptedAuthResponse;
 import com.ntg.CitizenLink.dto.LoginRequest;
+import com.ntg.CitizenLink.security.JwtBlocklist;
 import com.ntg.CitizenLink.security.config.JwtProperties;
 import com.ntg.CitizenLink.service.interfaces.AuthService;
+import com.ntg.CitizenLink.service.interfaces.JwtService;
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.Date;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +43,8 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtService jwtService;
+    private final JwtBlocklist jwtBlocklist;
     private final JwtProperties jwtProperties;
 
     @PostMapping("/login")
@@ -112,6 +118,16 @@ public class AuthController {
             HttpServletRequest servletRequest) {
         String username = userDetails != null ? userDetails.getUsername() : "unknown";
         log.info("REST request: POST /api/v1/auth/logout - username: {}", username);
+
+        String authHeader = servletRequest.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String jwt = authHeader.substring(7);
+            String jti = jwtService.extractJti(jwt);
+            Date expiry = jwtService.extractExpiration(jwt);
+            if (jti != null) {
+                jwtBlocklist.block(jti, expiry);
+            }
+        }
 
         authService.logout(userDetails);
 
