@@ -36,16 +36,9 @@ public class CitizenController {
     @GetMapping("/search")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
     public ResponseEntity<PagedResponse<CitizenResponse>> searchCitizens(
-            @RequestParam(required = false) String searchTerm,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @Valid CitizenSearchRequest request
     ) {
-        log.info("GET /api/v1/citizens/search - searchTerm: {}, page: {}, size: {}", searchTerm, page, size);
-
-        CitizenSearchRequest request = new CitizenSearchRequest();
-        request.setSearchTerm(searchTerm);
-        request.setPage(page);
-        request.setSize(size);
+        log.info("GET /api/v1/citizens/search - searchTerm: {}, page: {}, size: {}", request.getSearchTerm(), request.getPage(), request.getSize());
 
         PagedResponse<CitizenResponse> response = citizenService.searchCitizens(request);
 
@@ -62,8 +55,8 @@ public class CitizenController {
     ) {
         UUID userId = securityContextHelper.getAuthenticatedUserId();
 
-        log.info("POST /api/v1/citizens - nationalId: {}, createdBy: {}",
-                request.getNationalId(), securityContextHelper.getAuthenticatedUsername());
+        log.info("POST /api/v1/citizens - createdBy: {}",
+                securityContextHelper.getAuthenticatedUsername());
 
         CitizenResponse response = citizenService.createCitizen(request, userId);
 

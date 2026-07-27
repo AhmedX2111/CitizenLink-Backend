@@ -1,6 +1,8 @@
 package com.ntg.CitizenLink.service.interfaces;
 
 import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Date;
 import java.util.Map;
 
 
@@ -21,4 +23,6 @@ public interface JwtService {
     String extractTokenType(String token);
 
     String extractJti(String token);
+
+    Date extractExpiration(String token);
 }

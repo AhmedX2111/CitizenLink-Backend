@@ -1,7 +1,7 @@
 package com.ntg.CitizenLink.service.impl;
 
-import com.ntg.CitizenLink.GEH.IllegalTransitionException;
-import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
+import com.ntg.CitizenLink.exception.IllegalTransitionException;
+import com.ntg.CitizenLink.exception.ResourceNotFoundException;
 import com.ntg.CitizenLink.dto.agent.request.CaseSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
@@ -53,7 +53,8 @@ public class CaseServiceImpl implements CaseService {
     @Override
     @Transactional
     public CaseResponse createCase(CreateCaseRequest request, UUID creatorId) {
-        log.info("Creating new case for citizen: {}", request.getCitizenNationalId());
+        log.info("Creating new case - department: {}, category: {}",
+                request.getDepartmentId(), request.getCategoryId());
 
         AppUser creator = userRepository.findById(creatorId)
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", creatorId));
@@ -64,13 +65,24 @@ public class CaseServiceImpl implements CaseService {
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> ResourceNotFoundException.of("Category", request.getCategoryId()));
 
+        if (!category.getActive()) {
+            throw new IllegalArgumentException("Category is not active and cannot be assigned to a case");
+        }
+
         Department department = departmentRepository.findById(request.getDepartmentId())
                 .orElseThrow(() -> ResourceNotFoundException.of("Department", request.getDepartmentId()));
+
+        if (!department.getActive()) {
+            throw new IllegalArgumentException("Department is not active and cannot be assigned to a case");
+        }
 
         AppUser assignedTo = null;
         if (request.getAssignedToUserId() != null) {
             assignedTo = userRepository.findById(request.getAssignedToUserId())
                     .orElseThrow(() -> ResourceNotFoundException.of("AppUser (assignedTo)", request.getAssignedToUserId()));
+            if (!assignedTo.getActive()) {
+                throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+            }
         }
 
         String caseNumber = caseNumberService.generateNext();
@@ -260,6 +272,9 @@ public class CaseServiceImpl implements CaseService {
             }
             AppUser handler = userRepository.findById(request.getAssignedToUserId())
                     .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
+            if (!handler.getActive()) {
+                throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+            }
             if (handler.getRole() != UserRole.HANDLER) {
                 throw new IllegalTransitionException("INVALID_ASSIGNMENT", "Can only assign to a user with HANDLER role");
             }
@@ -273,6 +288,9 @@ public class CaseServiceImpl implements CaseService {
             }
             AppUser newHandler = userRepository.findById(request.getAssignedToUserId())
                     .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
+            if (!newHandler.getActive()) {
+                throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+            }
             if (newHandler.getRole() != UserRole.HANDLER) {
                 throw new IllegalTransitionException("INVALID_REASSIGNMENT", "Can only reassign to a user with HANDLER role");
             }

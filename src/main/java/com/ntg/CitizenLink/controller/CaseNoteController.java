@@ -5,6 +5,8 @@ import com.ntg.CitizenLink.dto.agent.response.NoteResponse;
 import com.ntg.CitizenLink.security.config.SecurityContextHelper;
 import com.ntg.CitizenLink.service.interfaces.CaseNoteService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -70,8 +72,8 @@ public class CaseNoteController {
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
     public ResponseEntity<Page<NoteResponse>> getNotesByCaseIdPaginated(
             @PathVariable UUID caseId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size
     ) {
         log.info("REST request: GET /api/v1/cases/{}/notes/paginated - page: {}, size: {}", caseId, page, size);
 

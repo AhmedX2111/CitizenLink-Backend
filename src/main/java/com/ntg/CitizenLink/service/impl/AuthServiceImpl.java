@@ -4,7 +4,7 @@ import com.ntg.CitizenLink.dto.AuthResponse;
 import com.ntg.CitizenLink.dto.EncryptedAuthResponse;
 import com.ntg.CitizenLink.dto.LoginRequest;
 import com.ntg.CitizenLink.entities.AppUser;
-import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
+import com.ntg.CitizenLink.exception.ResourceNotFoundException;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.service.interfaces.AuthService;
 import com.ntg.CitizenLink.service.interfaces.IdEncryptionService;

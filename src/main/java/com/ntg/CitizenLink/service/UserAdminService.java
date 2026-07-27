@@ -1,7 +1,7 @@
 package com.ntg.CitizenLink.service;
 
-import com.ntg.CitizenLink.GEH.DuplicateResourceException;
-import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
+import com.ntg.CitizenLink.exception.DuplicateResourceException;
+import com.ntg.CitizenLink.exception.ResourceNotFoundException;
 import com.ntg.CitizenLink.dto.agent.request.CreateUserRequest;
 import com.ntg.CitizenLink.dto.agent.request.UpdateUserRequest;
 import com.ntg.CitizenLink.dto.agent.request.UserSearchRequest;

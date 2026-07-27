@@ -1,7 +1,7 @@
 package com.ntg.CitizenLink.service.impl;
 
-import com.ntg.CitizenLink.GEH.DuplicateResourceException;
-import com.ntg.CitizenLink.GEH.ResourceNotFoundException;
+import com.ntg.CitizenLink.exception.DuplicateResourceException;
+import com.ntg.CitizenLink.exception.ResourceNotFoundException;
 import com.ntg.CitizenLink.dto.agent.request.CitizenSearchRequest;
 import com.ntg.CitizenLink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.CitizenLink.dto.agent.response.CaseSummaryResponse;
@@ -98,7 +98,7 @@ public class CitizenServiceImpl implements CitizenService {
 
         // Check for duplicate phone
         if (citizenRepository.existsByPhone(request.getPhone())) {
-            log.warn("Duplicate phone number: {}", request.getPhone());
+            log.warn("Duplicate phone number detected during citizen creation");
             throw new DuplicateResourceException("Citizen", "phone number", request.getPhone());
         }
 
@@ -110,7 +110,7 @@ public class CitizenServiceImpl implements CitizenService {
 
         // Check for duplicate email (only if email is not null)
         if (email != null && citizenRepository.existsByEmail(email)) {
-            log.warn("Duplicate email: {}", email);
+            log.warn("Duplicate email detected during citizen creation");
             throw new DuplicateResourceException("Citizen", "email", email);
         }
 
