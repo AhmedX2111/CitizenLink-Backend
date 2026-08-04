@@ -7,11 +7,13 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -36,6 +38,7 @@ import java.io.IOException;
  * This filter must be registered BEFORE UsernamePasswordAuthenticationFilter
  * in the filter chain — done via addFilterBefore() in SecurityConfig.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -76,25 +79,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 3. Only authenticate if username was parsed and context is not yet populated.
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
-            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+            try {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-                String jti = jwtService.extractJti(jwt);
-                if (jti != null && jwtBlocklist.isBlocked(jti)) {
-                    filterChain.doFilter(request, response);
-                    return;
+                if (jwtService.isTokenValid(jwt, userDetails)) {
+                    String jti = jwtService.extractJti(jwt);
+                    if (jti != null && jwtBlocklist.isBlocked(jti)) {
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
+                    // 4. Build authentication token and attach request details (IP, session id, etc.)
+                    UsernamePasswordAuthenticationToken authToken =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails,
+                                    null,                          // credentials null → already authenticated
+                                    userDetails.getAuthorities()
+                            );
+                    authToken.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request)
+                    );
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
-                // 4. Build authentication token and attach request details (IP, session id, etc.)
-                UsernamePasswordAuthenticationToken authToken =
-                        new UsernamePasswordAuthenticationToken(
-                                userDetails,
-                                null,                          // credentials null → already authenticated
-                                userDetails.getAuthorities()
-                        );
-                authToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                );
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+            } catch (UsernameNotFoundException ex) {
+                log.warn("User not found during JWT validation: {}", username);
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                return; // stop filter chain; invalid token must not become a 500
             }
         }
 

@@ -87,32 +87,32 @@ public class AuthServiceImpl implements AuthService {
             type = jwtService.extractTokenType(rawRefreshToken);
         } catch (Exception e) {
             log.warn("AUTH EVENT: REFRESH_FAILURE | reason=Invalid token format");
-            throw new IllegalArgumentException("Invalid refresh token");
+            throw new BadCredentialsException("Invalid refresh token");
         }
 
         if (!"refresh".equals(type)) {
             log.warn("AUTH EVENT: REFRESH_FAILURE | reason=Invalid token type | type={}", type);
-            throw new IllegalArgumentException("Invalid refresh token");
+            throw new BadCredentialsException("Invalid refresh token");
         }
 
         AppUser user = appUserRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=User not found", username);
-                    return new IllegalArgumentException("Invalid refresh token");
+                    return new BadCredentialsException("Invalid refresh token");
                 });
 
         if (!user.getActive()) {
             log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=Account is disabled", username);
             user.setRefreshTokenJti(null);
             appUserRepository.save(user);
-            throw new IllegalArgumentException("Account is disabled");
+            throw new BadCredentialsException("Account is disabled");
         }
 
         if (user.getRefreshTokenJti() == null || !user.getRefreshTokenJti().equals(jti)) {
             log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=Token revoked or reused", username);
             user.setRefreshTokenJti(null);
             appUserRepository.save(user);
-            throw new IllegalArgumentException("Refresh token has been revoked");
+            throw new BadCredentialsException("Refresh token has been revoked");
         }
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(username);
