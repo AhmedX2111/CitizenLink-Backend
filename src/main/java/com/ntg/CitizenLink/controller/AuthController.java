@@ -84,8 +84,8 @@ public class AuthController {
         log.info("REST request: POST /api/v1/auth/refresh");
 
         if (refreshToken == null || refreshToken.isBlank()) {
-            log.warn("REST response: POST /api/v1/auth/refresh - status: 400 - missing refresh token cookie");
-            return ResponseEntity.badRequest().build();
+            log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - missing refresh token cookie");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         long startTime = System.currentTimeMillis();
