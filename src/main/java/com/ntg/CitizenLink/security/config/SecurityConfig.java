@@ -22,24 +22,20 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * Central Spring Security configuration for CitizenLink.
- *
  * Design decisions:
  *   - Stateless sessions (no HttpSession) — JWT carries all auth state.
  *   - CSRF disabled — safe for stateless REST APIs that don't use cookies for auth.
  *   - @EnableMethodSecurity enables @PreAuthorize at controller/service level
  *     for fine-grained per-method role checks (e.g. ADMIN-only user CRUD).
- *
  * Public endpoints (no token required):
  *   POST /api/v1/auth/login  — obtain token
  *   GET  /api/v1/auth/me     — intentionally protected (needs valid token)
  *   GET  /                   — landing page (if served by Spring)
  *   Swagger UI & OpenAPI docs for local dev
- *
  * Role-based rules (from BRD §4.3 permission matrix):
  *   /api/v1/users/**         → ADMIN only
  *   /api/v1/reports/**       → ADMIN, SUPERVISOR
  *   All other /api/v1/**     → any authenticated user
- *
  *   Fine-grained rules (e.g. assign = SUPERVISOR/ADMIN only) are enforced
  *   in the service layer via @PreAuthorize, not here — keeps SecurityConfig
  *   focused on authentication boundaries, not business rules.
@@ -58,7 +54,7 @@ public class SecurityConfig {
     // -------------------------------------------------------------------------
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) {
         http
                 // Disable CSRF — not needed for stateless JWT APIs
                 .csrf(AbstractHttpConfigurer::disable)
@@ -133,8 +129,7 @@ public class SecurityConfig {
      * username+password check during login.
      */
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
-            throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) {
         return config.getAuthenticationManager();
     }
 
