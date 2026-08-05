@@ -1,0 +1,48 @@
+spring:
+  datasource:
+    # H2 in PostgreSQL compatibility mode so Hibernate-created schema
+    # matches the production PostgreSQL schema semantics.
+    # DATABASE_TO_LOWER=TRUE + CASE_INSENSITIVE_IDENTIFIERS=TRUE mirror
+    # PostgreSQL's lowercase folding; DEFAULT_NULL_ORDERING=HIGH matches
+    # PostgreSQL's default NULLS LAST for ascending ORDER BY.
+    # NON_KEYWORDS=YEAR: H2 reserves YEAR even in PostgreSQL mode, but the
+    # CaseNumberSeq entity has a `year` column. Treat it as a plain identifier.
+    url: jdbc:h2:mem:citizenlink;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DEFAULT_NULL_ORDERING=HIGH;NON_KEYWORDS=YEAR
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  sql:
+    init:
+      mode: never
+
+jwt:
+  secret-key: citizenlink-test-jwt-secret-key-0123456789-0123456789-0123456789
+  expiration-ms: 86400000
+  refresh-expiration-ms: 604800000
+
+encryption:
+  secret-key: test-encryption-secret-key
+
+cors:
+  allowed-origins: http://localhost:4200
+  allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+  allowed-headers: "*"
+  allow-credentials: true
+
+file:
+  upload-dir: ${java.io.tmpdir}/citizenlink-test-uploads
+
+logging:
+  level:
+    org.springframework.security: WARN
+    com.ntg.CitizenLink: DEBUG
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    com.zaxxer.hikari: WARN
