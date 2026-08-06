@@ -22,18 +22,15 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * Authentication endpoints (BRD §5.1).
- *
  *   POST /api/v1/auth/login    — public, returns access token in body, refresh token in HttpOnly cookie (AUTH-01, AUTH-02)
  *   POST /api/v1/auth/refresh  — public, reads refresh token from cookie, rotates it, returns new access token (AUTH-03)
  *   POST /api/v1/auth/logout   — protected, clears refresh cookie and revokes token (AUTH-04)
  *   GET  /api/v1/auth/me       — protected, returns current user profile (AUTH-02)
- *
  * Security:
  *   - Access token is short-lived (e.g. 15min) and returned only in the response body.
  *   - Refresh token is stored in an HttpOnly, Secure, SameSite=Strict cookie — invisible to JavaScript,
  *     immune to XSS, and only sent automatically on same-site requests to /auth/refresh.
  *   - The refresh token is never returned in the response body.
- *
  * The controller is intentionally thin — all logic lives in AuthService.
  */
 @Slf4j

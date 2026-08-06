@@ -11,6 +11,8 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.security.core.AuthenticationException;
@@ -122,6 +124,29 @@ public class GlobalExceptionHandler {
         log.warn("Duplicate resource detected");
         ErrorResponse body = new ErrorResponse("DUPLICATE_RESOURCE", ex.getMessage(), null);
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 409 Conflict - Concurrent modification (optimistic-lock version conflict)
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        log.warn("Concurrent modification detected: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse(
+                "CONCURRENT_MODIFICATION",
+                "This case was updated by another user. Refresh and retry.",
+                null);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - Invalid path/query parameter type (e.g. malformed UUID)
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Invalid parameter type for {}: {}", ex.getName(), ex.getValue());
+        ErrorResponse body = new ErrorResponse("BAD_REQUEST", "Invalid value for parameter: " + ex.getName(), null);
+        return ResponseEntity.badRequest().body(body);
     }
 
     // -------------------------------------------------------------------------
