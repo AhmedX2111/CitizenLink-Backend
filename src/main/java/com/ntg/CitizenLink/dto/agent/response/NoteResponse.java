@@ -13,6 +13,7 @@ public class NoteResponse {
     private UUID caseId;
     private UUID authorId;
     private String authorName;
+    private String authorUsername;
     private String authorRole;
     private String body;
     private Boolean internal;

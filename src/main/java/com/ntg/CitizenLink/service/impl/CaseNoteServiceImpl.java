@@ -192,6 +192,7 @@ public class CaseNoteServiceImpl implements CaseNoteService {
                 .caseId(note.getCaseEntity().getId())
                 .authorId(note.getAuthor().getId())
                 .authorName(note.getAuthor().getDisplayName())
+                .authorUsername(note.getAuthor().getUsername())
                 .authorRole(note.getAuthor().getRole().name())
                 .body(note.getBody())
                 .internal(note.getInternal())
