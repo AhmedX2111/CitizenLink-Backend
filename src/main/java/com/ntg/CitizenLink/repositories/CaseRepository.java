@@ -6,6 +6,7 @@ import com.ntg.CitizenLink.dto.agent.response.MyOpenCaseResponse;
 import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.enums.CaseStatus;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -138,52 +139,11 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
 
     // ── US-28: CSV export ───────────────────────────────────────────────────
     /**
-     * Fetch all cases ordered by createdAt DESC.
-     * Uses JOIN FETCH to load all relationships eagerly.
-     */
-    @Query("""
-        SELECT DISTINCT c FROM Case c
-        LEFT JOIN FETCH c.citizen
-        LEFT JOIN FETCH c.category
-        LEFT JOIN FETCH c.department
-        LEFT JOIN FETCH c.createdByUser
-        LEFT JOIN FETCH c.assignedToUser
-        ORDER BY c.createdAt DESC
-        """)
-    List<Case> findAllCasesForReport();
-
-    /**
-     * Fetch cases created on or after a given date.
-     */
-    @Query("""
-        SELECT DISTINCT c FROM Case c
-        LEFT JOIN FETCH c.citizen
-        LEFT JOIN FETCH c.category
-        LEFT JOIN FETCH c.department
-        LEFT JOIN FETCH c.createdByUser
-        LEFT JOIN FETCH c.assignedToUser
-        WHERE c.createdAt >= :startDate
-        ORDER BY c.createdAt DESC
-        """)
-    List<Case> findCasesForReportAfter(@Param("startDate") OffsetDateTime startDate);
-
-    /**
-     * Fetch cases created before a given date.
-     */
-    @Query("""
-        SELECT DISTINCT c FROM Case c
-        LEFT JOIN FETCH c.citizen
-        LEFT JOIN FETCH c.category
-        LEFT JOIN FETCH c.department
-        LEFT JOIN FETCH c.createdByUser
-        LEFT JOIN FETCH c.assignedToUser
-        WHERE c.createdAt < :endDate
-        ORDER BY c.createdAt DESC
-        """)
-    List<Case> findCasesForReportBefore(@Param("endDate") OffsetDateTime endDate);
-
-    /**
-     * Fetch cases within a createdAt date range, ordered by createdAt DESC.
+     * Fetch cases within a createdAt date range, ordered by createdAt DESC,
+     * paged so the exporter never materialises the whole result set.
+     * Uses JOIN FETCH to load all relationships eagerly; all associations are
+     * to-one, so Hibernate applies the LIMIT/OFFSET in SQL (no in-memory paging).
+     * The id tiebreaker keeps pagination stable when createdAt ties.
      */
     @Query("""
         SELECT DISTINCT c FROM Case c
@@ -193,8 +153,9 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
         LEFT JOIN FETCH c.createdByUser
         LEFT JOIN FETCH c.assignedToUser
         WHERE c.createdAt >= :startDate AND c.createdAt < :endDate
-        ORDER BY c.createdAt DESC
+        ORDER BY c.createdAt DESC, c.id DESC
         """)
-    List<Case> findCasesForReportBetween(@Param("startDate") OffsetDateTime startDate,
-                                         @Param("endDate") OffsetDateTime endDate);
+    Slice<Case> findCasesForReportBetween(@Param("startDate") OffsetDateTime startDate,
+                                          @Param("endDate") OffsetDateTime endDate,
+                                          Pageable pageable);
 }
