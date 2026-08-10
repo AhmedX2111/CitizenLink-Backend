@@ -24,6 +24,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -42,6 +43,7 @@ class AuthFlowIntegrationTest {
     private static final String PASSWORD = "Passw0rd!";
 
     private String username;
+    private AppUser agent;
 
     @BeforeEach
     void setUp() {
@@ -50,15 +52,19 @@ class AuthFlowIntegrationTest {
         user.setUsername(username);
         user.setEmail(username + "@test.gov");
         user.setPasswordHash(passwordEncoder.encode(PASSWORD));
-        userRepository.save(user);
+        agent = userRepository.save(user);
+    }
+
+    private MvcResult loginAs(String user) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + user + "\",\"password\":\"" + PASSWORD + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
     }
 
     private MvcResult login() throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"" + username + "\",\"password\":\"" + PASSWORD + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
+        return loginAs(username);
     }
 
     private String accessToken(MvcResult result) throws Exception {
@@ -151,5 +157,28 @@ class AuthFlowIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"ghost.user\",\"password\":\"whatever\"}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void deactivatedUserAccessToken_isRejected() throws Exception {
+        String token = accessToken(login());
+
+        mockMvc.perform(get("/api/v1/auth/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk());
+
+        AppUser admin = EntityFactory.appUser(UserRole.ADMIN);
+        String adminUsername = "it.admin." + EntityFactory.uniqueSuffix();
+        admin.setUsername(adminUsername);
+        admin.setEmail(adminUsername + "@test.gov");
+        admin.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        userRepository.save(admin);
+        String adminToken = accessToken(loginAs(adminUsername));
+
+        mockMvc.perform(put("/api/v1/users/{id}/deactivate", agent.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/auth/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isForbidden());
     }
 }
