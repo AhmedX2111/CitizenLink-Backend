@@ -110,6 +110,25 @@ class JwtAuthenticationFilterTest {
             assertThat(auth.getPrincipal()).isEqualTo(userDetails);
             assertThat(auth.getAuthorities()).extracting("authority").contains("ROLE_HANDLER");
         }
+
+        @Test
+        void shouldNotAuthenticate_whenAccountDisabled() throws Exception {
+            UserDetails disabledUser = new User(USERNAME, "password", true, true, true, false,
+                    List.of(new SimpleGrantedAuthority("ROLE_HANDLER")));
+            when(jwtService.extractUsername(TOKEN)).thenReturn(USERNAME);
+            when(userDetailsService.loadUserByUsername(USERNAME)).thenReturn(disabledUser);
+            when(jwtService.isTokenValid(TOKEN, disabledUser)).thenReturn(true);
+            when(jwtService.extractJti(TOKEN)).thenReturn(JTI);
+            when(jwtBlocklist.isBlocked(JTI)).thenReturn(false);
+
+            MockHttpServletRequest request = requestWithBearer();
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            filter.doFilter(request, response, filterChain);
+
+            verify(filterChain).doFilter(request, response);
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        }
     }
 
     @Nested

@@ -9,6 +9,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.AccountStatusUserDetailsChecker;
+import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -50,6 +52,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtBlocklist        jwtBlocklist;
     private final UserDetailsService  userDetailsService;
 
+    private final AccountStatusUserDetailsChecker accountStatusChecker =
+            new AccountStatusUserDetailsChecker();
+
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest  request,
@@ -88,6 +93,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         filterChain.doFilter(request, response);
                         return;
                     }
+
+                    // 3b. Reject accounts that were deactivated after the token was issued.
+                    //     UserDetailsServiceImpl maps active=false to isEnabled()=false; the
+                    //     JWT path bypasses DaoAuthenticationProvider, so enforce it here.
+                    //     Throws DisabledException/LockedException/etc. for invalid accounts.
+                    accountStatusChecker.check(userDetails);
+
                     // 4. Build authentication token and attach request details (IP, session id, etc.)
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(
@@ -100,6 +112,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     );
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
+            } catch (AccountStatusException ex) {
+                // Account is disabled/locked/expired — do not authenticate.
+                // Continuing without auth lets the security config deny the request (403).
+                log.warn("Account not usable during JWT validation for user {}: {}",
+                        username, ex.getClass().getSimpleName());
+                filterChain.doFilter(request, response);
+                return;
             } catch (UsernameNotFoundException ex) {
                 log.warn("User not found during JWT validation: {}", username);
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
