@@ -1,9 +1,13 @@
 package com.ntg.CitizenLink.service.impl;
 
 import com.ntg.CitizenLink.dto.agent.request.CaseTransitionRequest;
+import com.ntg.CitizenLink.dto.agent.request.CreateCaseRequest;
 import com.ntg.CitizenLink.dto.agent.response.CaseResponse;
 import com.ntg.CitizenLink.entities.AppUser;
 import com.ntg.CitizenLink.entities.Case;
+import com.ntg.CitizenLink.entities.Category;
+import com.ntg.CitizenLink.entities.Citizen;
+import com.ntg.CitizenLink.entities.Department;
 import com.ntg.CitizenLink.enums.CaseStatus;
 import com.ntg.CitizenLink.enums.UserRole;
 import com.ntg.CitizenLink.enums.WorkflowAction;
@@ -11,6 +15,9 @@ import com.ntg.CitizenLink.exception.IllegalTransitionException;
 import com.ntg.CitizenLink.exception.ResourceNotFoundException;
 import com.ntg.CitizenLink.repositories.AppUserRepository;
 import com.ntg.CitizenLink.repositories.CaseRepository;
+import com.ntg.CitizenLink.repositories.CategoryRepository;
+import com.ntg.CitizenLink.repositories.CitizenRepository;
+import com.ntg.CitizenLink.repositories.DepartmentRepository;
 import com.ntg.CitizenLink.repositories.StatusHistoryRepository;
 import com.ntg.CitizenLink.security.CaseAccessPolicy;
 import com.ntg.CitizenLink.service.CaseTransitionRule;
@@ -35,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +62,9 @@ class CaseServiceImplTest {
 
     @Mock private CaseRepository caseRepository;
     @Mock private AppUserRepository userRepository;
+    @Mock private CitizenRepository citizenRepository;
+    @Mock private CategoryRepository categoryRepository;
+    @Mock private DepartmentRepository departmentRepository;
     @Mock private StatusHistoryRepository statusHistoryRepository;
     @Mock private CaseNumberService caseNumberService;
     @Mock private CaseMapper caseMapper;
@@ -295,6 +306,126 @@ class CaseServiceImplTest {
             CaseTransitionRequest r = request(WorkflowAction.START);
             assertThatThrownBy(() -> caseService.transitionCase(caseId, requesterId, r))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Nested
+    class CreateCase {
+
+        private UUID creatorId;
+        private AppUser agent;
+        private AppUser supervisor;
+        private AppUser handler;
+        private AppUser targetAgent;
+        private AppUser inactiveHandler;
+        private Citizen citizen;
+        private Category category;
+        private Department department;
+
+        @BeforeEach
+        void setUp() {
+            creatorId = UUID.randomUUID();
+            agent = user(UserRole.AGENT);
+            supervisor = user(UserRole.SUPERVISOR);
+            handler = user(UserRole.HANDLER);
+            targetAgent = user(UserRole.AGENT);
+            inactiveHandler = user(UserRole.HANDLER);
+            inactiveHandler.setActive(false);
+
+            citizen = new Citizen();
+            citizen.setId(UUID.randomUUID());
+            category = new Category();
+            category.setId(UUID.randomUUID());
+            category.setActive(true);
+            department = new Department();
+            department.setId(UUID.randomUUID());
+            department.setActive(true);
+        }
+
+        private void stubLookups(AppUser creator) {
+            when(userRepository.findById(creatorId)).thenReturn(Optional.of(creator));
+            when(citizenRepository.findByNationalId(any())).thenReturn(Optional.of(citizen));
+            when(categoryRepository.findById(any())).thenReturn(Optional.of(category));
+            when(departmentRepository.findById(any())).thenReturn(Optional.of(department));
+        }
+
+        private void stubPersist() {
+            when(caseNumberService.generateNext()).thenReturn("CASE-2026-00001");
+            when(caseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(caseMapper.toResponse(any())).thenReturn(mock(CaseResponse.class));
+        }
+
+        private CreateCaseRequest requestWithAssignment(UUID assignedToUserId) {
+            CreateCaseRequest r = new CreateCaseRequest();
+            r.setSubject("subject");
+            r.setDescription("description");
+            r.setType(com.ntg.CitizenLink.enums.CaseType.COMPLAINT);
+            r.setPriority(com.ntg.CitizenLink.enums.Priority.HIGH);
+            r.setChannel(com.ntg.CitizenLink.enums.Channel.WEB);
+            r.setCitizenNationalId("12345678901234");
+            r.setCategoryId(category.getId());
+            r.setDepartmentId(department.getId());
+            r.setAssignedToUserId(assignedToUserId);
+            return r;
+        }
+
+        @Test
+        void agentAssignmentRequest_isIgnored_createdInNewStatus() {
+            stubLookups(agent);
+            stubPersist();
+
+            caseService.createCase(requestWithAssignment(handler.getId()), creatorId);
+
+            ArgumentCaptor<Case> caseCaptor = ArgumentCaptor.forClass(Case.class);
+            verify(caseRepository).save(caseCaptor.capture());
+            assertThat(caseCaptor.getValue().getStatus()).isEqualTo(CaseStatus.NEW);
+            assertThat(caseCaptor.getValue().getAssignedToUser()).isNull();
+
+            // Only the CREATE timeline entry — no ASSIGN row is written.
+            verify(statusHistoryRepository, times(1)).save(any());
+            // The privileged target lookup must not even happen.
+            verify(userRepository, never()).findById(handler.getId());
+        }
+
+        @Test
+        void supervisorAssignmentToHandler_setsAssignedStatusAndAssignHistory() {
+            stubLookups(supervisor);
+            stubPersist();
+            when(userRepository.findById(handler.getId())).thenReturn(Optional.of(handler));
+
+            caseService.createCase(requestWithAssignment(handler.getId()), creatorId);
+
+            ArgumentCaptor<Case> caseCaptor = ArgumentCaptor.forClass(Case.class);
+            verify(caseRepository).save(caseCaptor.capture());
+            assertThat(caseCaptor.getValue().getStatus()).isEqualTo(CaseStatus.ASSIGNED);
+            assertThat(caseCaptor.getValue().getAssignedToUser()).isEqualTo(handler);
+
+            ArgumentCaptor<com.ntg.CitizenLink.entities.StatusHistory> historyCaptor =
+                    ArgumentCaptor.forClass(com.ntg.CitizenLink.entities.StatusHistory.class);
+            verify(statusHistoryRepository, times(2)).save(historyCaptor.capture());
+            assertThat(historyCaptor.getAllValues())
+                    .extracting(com.ntg.CitizenLink.entities.StatusHistory::getAction)
+                    .containsExactly(WorkflowAction.CREATE, WorkflowAction.ASSIGN);
+        }
+
+        @Test
+        void supervisorAssignmentToNonHandler_isRejected() {
+            stubLookups(supervisor);
+            when(userRepository.findById(targetAgent.getId())).thenReturn(Optional.of(targetAgent));
+
+            assertThatThrownBy(() -> caseService.createCase(requestWithAssignment(targetAgent.getId()), creatorId))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("HANDLER role");
+        }
+
+        @Test
+        void supervisorAssignmentToInactiveUser_isRejected() {
+            stubLookups(supervisor);
+            when(userRepository.findById(inactiveHandler.getId())).thenReturn(Optional.of(inactiveHandler));
+
+            assertThatThrownBy(() -> caseService.createCase(requestWithAssignment(inactiveHandler.getId()), creatorId))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("inactive");
         }
     }
 }

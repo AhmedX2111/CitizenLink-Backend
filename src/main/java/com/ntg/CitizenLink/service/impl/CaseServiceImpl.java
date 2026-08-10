@@ -76,12 +76,24 @@ public class CaseServiceImpl implements CaseService {
             throw new IllegalArgumentException("Department is not active and cannot be assigned to a case");
         }
 
+        // Assignment at creation is a privileged operation. Only SUPERVISOR/ADMIN
+        // may pre-assign a handler — mirroring the ASSIGN workflow rule (which is
+        // restricted to those roles on the transition endpoint). For any other role
+        // the field is ignored so an AGENT cannot bypass the ASSIGN gate this way.
         AppUser assignedTo = null;
         if (request.getAssignedToUserId() != null) {
-            assignedTo = userRepository.findById(request.getAssignedToUserId())
-                    .orElseThrow(() -> ResourceNotFoundException.of("AppUser (assignedTo)", request.getAssignedToUserId()));
-            if (!assignedTo.getActive()) {
-                throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+            UserRole creatorRole = creator.getRole();
+            if (creatorRole == UserRole.SUPERVISOR || creatorRole == UserRole.ADMIN) {
+                assignedTo = userRepository.findById(request.getAssignedToUserId())
+                        .orElseThrow(() -> ResourceNotFoundException.of("AppUser (assignedTo)", request.getAssignedToUserId()));
+                if (!assignedTo.getActive()) {
+                    throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+                }
+                if (assignedTo.getRole() != UserRole.HANDLER) {
+                    throw new IllegalArgumentException("Can only assign a case to a user with HANDLER role");
+                }
+            } else {
+                log.warn("Ignoring assignedToUserId on case create: role {} is not allowed to assign", creatorRole);
             }
         }
 
@@ -93,7 +105,9 @@ public class CaseServiceImpl implements CaseService {
         newCase.setDescription(request.getDescription());
         newCase.setType(request.getType());
         newCase.setPriority(request.getPriority());
-        newCase.setStatus(CaseStatus.NEW);
+        // Pre-assigned cases are created directly in ASSIGNED so the handler can
+        // act on them (NEW-with-assignee is unreachable by any workflow rule).
+        newCase.setStatus(assignedTo != null ? CaseStatus.ASSIGNED : CaseStatus.NEW);
         newCase.setChannel(request.getChannel());
         newCase.setDueAt(request.getDueAt());
         newCase.setCitizen(citizen);
@@ -111,6 +125,18 @@ public class CaseServiceImpl implements CaseService {
         history.setAction(WorkflowAction.CREATE);
         history.setChangedByUser(creator);
         statusHistoryRepository.save(history);
+
+        // Pre-assigned at creation: record the matching ASSIGN timeline entry so
+        // the audit trail is identical to an ASSIGN transition (NEW -> ASSIGNED).
+        if (assignedTo != null) {
+            StatusHistory assignHistory = new StatusHistory();
+            assignHistory.setCaseEntity(saved);
+            assignHistory.setFromStatus(CaseStatus.NEW);
+            assignHistory.setToStatus(CaseStatus.ASSIGNED);
+            assignHistory.setAction(WorkflowAction.ASSIGN);
+            assignHistory.setChangedByUser(creator);
+            statusHistoryRepository.save(assignHistory);
+        }
 
         log.info("Case created successfully with ID: {}", saved.getId());
         return caseMapper.toResponse(saved);
