@@ -99,8 +99,19 @@ public class CsvExportServiceImpl implements CsvExportService {
 
     private static String csvEscape(String value) {
         if (value == null) return "";
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
+        String safe = neutralizeFormula(value);
+        if (safe.contains(",") || safe.contains("\"") || safe.contains("\n")) {
+            return "\"" + safe.replace("\"", "\"\"") + "\"";
+        }
+        return safe;
+    }
+
+    private static String neutralizeFormula(String value) {
+        if (value.isEmpty()) return value;
+        char first = value.charAt(0);
+        if (first == '=' || first == '+' || first == '-' || first == '@'
+                || first == '\t' || first == '\r') {
+            return "'" + value;
         }
         return value;
     }
