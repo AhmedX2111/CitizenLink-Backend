@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.time.*;
 
@@ -39,33 +40,31 @@ public class ReportController {
     }
 
     /**
-     * US-28, RPT-03: export cases as CSV, optionally filtered by date range.
+     * US-28, RPT-03: export cases as CSV for a date range, streamed.
+     * The range is bounded server-side (defaults to the last 30 days when a
+     * bound is missing, max span 366 days) and the response is streamed page
+     * by page so a huge range never materialises in memory.
      */
     @GetMapping("/export/csv")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR')")
-    public ResponseEntity<byte[]> exportCsv(
+    public ResponseEntity<StreamingResponseBody> exportCsv(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
-        OffsetDateTime start = null;
-        OffsetDateTime end = null;
-        if (startDate != null) {
-            start = startDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime();
-        }
-        if (endDate != null) {
-            end = endDate.atTime(LocalTime.MAX).atZone(ZoneOffset.UTC).toOffsetDateTime();
-        }
-
-        byte[] csv = csvExportService.exportCasesCsv(start, end);
+        OffsetDateTime start = startDate != null
+                ? startDate.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime()
+                : null;
+        OffsetDateTime end = endDate != null
+                ? endDate.atTime(LocalTime.MAX).atZone(ZoneOffset.UTC).toOffsetDateTime()
+                : null;
 
         String filename = "citizenlink-cases-"
                 + LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE) + ".csv";
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
-                .contentLength(csv.length)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment().filename(filename).build().toString())
-                .body(csv);
+                .body(out -> csvExportService.exportCasesCsv(out, start, end));
     }
 }

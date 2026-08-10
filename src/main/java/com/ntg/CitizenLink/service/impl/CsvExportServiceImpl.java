@@ -4,22 +4,30 @@ import com.ntg.CitizenLink.entities.Case;
 import com.ntg.CitizenLink.repositories.CaseRepository;
 import com.ntg.CitizenLink.service.interfaces.CsvExportService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.ByteArrayOutputStream;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
+import java.time.temporal.ChronoUnit;
 
 @Service
 @RequiredArgsConstructor
 public class CsvExportServiceImpl implements CsvExportService {
 
     private static final DateTimeFormatter CSV_DT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private static final int PAGE_SIZE = 1000;
+    private static final int DEFAULT_RANGE_DAYS = 30;
+    private static final long MAX_RANGE_DAYS = 366;
 
     private static final String HEADER = String.join(",",
             "Case Number",
@@ -47,30 +55,39 @@ public class CsvExportServiceImpl implements CsvExportService {
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] exportCasesCsv(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Case> cases;
-        if (startDate != null && endDate != null) {
-            cases = caseRepository.findCasesForReportBetween(startDate, endDate);
-        } else if (startDate != null) {
-            cases = caseRepository.findCasesForReportAfter(startDate);
-        } else if (endDate != null) {
-            cases = caseRepository.findCasesForReportBefore(endDate);
-        } else {
-            cases = caseRepository.findAllCasesForReport();
-        }
+    public void exportCasesCsv(OutputStream out, OffsetDateTime startDate, OffsetDateTime endDate) throws IOException {
+        OffsetDateTime start = startDate != null ? startDate : OffsetDateTime.now(ZoneOffset.UTC).minusDays(DEFAULT_RANGE_DAYS);
+        OffsetDateTime end = endDate != null ? endDate : OffsetDateTime.now(ZoneOffset.UTC);
+        validateRange(start, end);
 
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        PrintWriter writer = new PrintWriter(new OutputStreamWriter(bos, StandardCharsets.UTF_8));
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
 
         writer.write('\ufeff');
-        writer.println(HEADER);
+        writer.write(HEADER);
+        writer.newLine();
 
-        for (Case c : cases) {
-            writer.println(toCsvRow(c));
+        int pageNumber = 0;
+        Slice<Case> slice;
+        do {
+            slice = caseRepository.findCasesForReportBetween(start, end, PageRequest.of(pageNumber, PAGE_SIZE));
+            for (Case c : slice.getContent()) {
+                writer.write(toCsvRow(c));
+                writer.newLine();
+            }
+            writer.flush();
+            pageNumber++;
+        } while (slice.hasNext());
+    }
+
+    private void validateRange(OffsetDateTime start, OffsetDateTime end) {
+        if (start.isAfter(end)) {
+            throw new IllegalArgumentException("Start date must not be after end date");
         }
-
-        writer.flush();
-        return bos.toByteArray();
+        long days = ChronoUnit.DAYS.between(start, end);
+        if (days > MAX_RANGE_DAYS) {
+            throw new IllegalArgumentException(
+                    "Requested date range exceeds the maximum allowed span of " + MAX_RANGE_DAYS + " days");
+        }
     }
 
     private String toCsvRow(Case c) {
