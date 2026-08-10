@@ -191,6 +191,87 @@ class CaseFlowIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    private String createBodyWithAssignment(UUID assignedToUserId) {
+        return """
+                {
+                  "subject": "Integration pre-assigned case",
+                  "description": "Created by integration test",
+                  "type": "COMPLAINT",
+                  "priority": "HIGH",
+                  "channel": "WEB",
+                  "citizenNationalId": "%s",
+                  "categoryId": "%s",
+                  "departmentId": "%s",
+                  "assignedToUserId": "%s"
+                }
+                """.formatted(citizen.getNationalId(), category.getId(), department.getId(), assignedToUserId);
+    }
+
+    @Test
+    void agentCreate_withAssignedToUser_isIgnoredAndCaseStaysNew() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+        String handlerToken = login(handler.getUsername());
+
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBodyWithAssignment(handler.getId())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("NEW"))
+                .andReturn();
+        String caseId = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+
+        // The target handler must NOT gain visibility of the case.
+        mockMvc.perform(get("/api/v1/cases/{id}", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + handlerToken))
+                .andExpect(status().isNotFound());
+
+        // No ASSIGN timeline entry — only CREATE.
+        mockMvc.perform(get("/api/v1/cases/{id}/timeline", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].action").value("CREATE"));
+    }
+
+    @Test
+    void supervisorCreate_withAssignedToHandler_setsAssignedStatus() throws Exception {
+        String handlerToken = login(handler.getUsername());
+
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBodyWithAssignment(handler.getId())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("ASSIGNED"))
+                .andReturn();
+        String caseId = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+
+        // The handler gains visibility immediately.
+        mockMvc.perform(get("/api/v1/cases/{id}", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + handlerToken))
+                .andExpect(status().isOk());
+
+        // CREATE + ASSIGN timeline entries.
+        mockMvc.perform(get("/api/v1/cases/{id}/timeline", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[*].action", hasItems("CREATE", "ASSIGN")));
+    }
+
+    @Test
+    void supervisorCreate_withAssignedToNonHandler_isRejected() throws Exception {
+        AppUser targetAgent = createUser(UserRole.AGENT);
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBodyWithAssignment(targetAgent.getId())))
+                .andExpect(status().isBadRequest());
+    }
+
     @Test
     void unauthenticatedCreate_returns403() throws Exception {
         mockMvc.perform(post("/api/v1/cases")
