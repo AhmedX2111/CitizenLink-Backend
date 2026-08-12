@@ -12,10 +12,12 @@ import lombok.Setter;
  *
  * Usage in service layer (inside a transaction):
  *
- *   UPDATE case_number_seq SET last_seq = last_seq + 1 WHERE year = :year RETURNING last_seq
+ *   CaseNumberSeq seq = repo.findByYearForUpdate(year)  // SELECT ... FOR UPDATE
+ *       .orElseGet(() -> repo.saveAndFlush(new CaseNumberSeq(year)));
+ *   seq.setLastSeq(seq.getLastSeq() + 1);               // flushed at commit
  *
  * Never use SELECT MAX() + 1 — that has a race condition under concurrent inserts.
- * The UPDATE ... RETURNING pattern is atomic and safe.
+ * The pessimistic lock keeps both mutation and commit atomic.
  */
 @Entity
 @Table(name = "case_number_seq")

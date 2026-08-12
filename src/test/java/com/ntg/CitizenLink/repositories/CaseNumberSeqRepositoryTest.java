@@ -30,28 +30,13 @@ class CaseNumberSeqRepositoryTest {
     }
 
     @Test
-    void incrementSequence_returnsZero_whenYearMissing() {
-        assertThat(seqRepository.incrementSequence(1999)).isZero();
-    }
-
-    @Test
-    void incrementSequence_incrementsExistingRow() {
-        seqRepository.save(new CaseNumberSeq(2026));
-
-        int updated = seqRepository.incrementSequence(2026);
-        assertThat(updated).isEqualTo(1);
-
-        CaseNumberSeq reloaded = reload(2026);
-        assertThat(reloaded.getLastSeq()).isEqualTo(1);
-    }
-
-    @Test
-    void incrementSequence_appliesOnTopOfExistingValue() {
+    void findByYearForUpdate_returnsLatestValue_afterPessimisticRead() {
         CaseNumberSeq seq = new CaseNumberSeq(2027);
         seq.setLastSeq(41);
         seqRepository.save(seq);
 
-        assertThat(seqRepository.incrementSequence(2027)).isEqualTo(1);
+        CaseNumberSeq locked = seqRepository.findByYearForUpdate(2027).orElseThrow();
+        locked.setLastSeq(locked.getLastSeq() + 1);
 
         CaseNumberSeq reloaded = reload(2027);
         assertThat(reloaded.getLastSeq()).isEqualTo(42);
