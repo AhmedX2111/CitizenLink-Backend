@@ -3,11 +3,14 @@ package com.ntg.citizenlink.integration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ntg.citizenlink.entities.AppUser;
+import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Category;
 import com.ntg.citizenlink.entities.Citizen;
 import com.ntg.citizenlink.entities.Department;
+import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.repositories.AppUserRepository;
+import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.repositories.CategoryRepository;
 import com.ntg.citizenlink.repositories.CitizenRepository;
 import com.ntg.citizenlink.repositories.DepartmentRepository;
@@ -46,6 +49,7 @@ class CaseFlowIntegrationTest {
     @Autowired private CitizenRepository citizenRepository;
     @Autowired private CategoryRepository categoryRepository;
     @Autowired private DepartmentRepository departmentRepository;
+    @Autowired private CaseRepository caseRepository;
     @Autowired private PasswordEncoder passwordEncoder;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -113,6 +117,17 @@ class CaseFlowIntegrationTest {
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
     }
 
+    private void transition(String token, String caseId, String action, String extra) throws Exception {
+        String body = extra == null || extra.isBlank()
+                ? "{\"action\":\"" + action + "\"}"
+                : "{\"action\":\"" + action + "\"," + extra + "}";
+        mockMvc.perform(post("/api/v1/cases/{id}/transition", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void create_returns201_withGeneratedCaseNumber() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/cases")
@@ -165,6 +180,52 @@ class CaseFlowIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("RESOLVED"))
                 .andExpect(jsonPath("$.resolutionSummary").value("Leak fixed on site"));
+    }
+
+    @Test
+    void reopenAfterClose_clearsResolvedClosedAndSummary() throws Exception {
+        String caseId = createCase();
+        String handlerToken = login(handler.getUsername());
+
+        transition(supervisorToken, caseId, "ASSIGN", "\"assignedToUserId\":\"" + handler.getId() + "\"");
+        transition(handlerToken, caseId, "START", null);
+        transition(handlerToken, caseId, "RESOLVE", "\"resolutionSummary\":\"Fix applied\"");
+        mockMvc.perform(post("/api/v1/cases/{id}/transition", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"CLOSE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"));
+
+        transition(supervisorToken, caseId, "REOPEN", null);
+
+        mockMvc.perform(get("/api/v1/cases/{id}", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+
+        Case reopened = caseRepository.findById(UUID.fromString(caseId)).orElseThrow();
+        assertThat(reopened.getStatus()).isEqualTo(CaseStatus.IN_PROGRESS);
+        assertThat(reopened.getResolvedAt()).isNull();
+        assertThat(reopened.getClosedAt()).isNull();
+        assertThat(reopened.getResolutionSummary()).isNull();
+    }
+
+    @Test
+    void reopenAfterResolve_clearsResolvedAndSummary() throws Exception {
+        String caseId = createCase();
+        String handlerToken = login(handler.getUsername());
+
+        transition(supervisorToken, caseId, "ASSIGN", "\"assignedToUserId\":\"" + handler.getId() + "\"");
+        transition(handlerToken, caseId, "START", null);
+        transition(handlerToken, caseId, "RESOLVE", "\"resolutionSummary\":\"Fix applied\"");
+        transition(supervisorToken, caseId, "REOPEN", null);
+
+        Case reopened = caseRepository.findById(UUID.fromString(caseId)).orElseThrow();
+        assertThat(reopened.getStatus()).isEqualTo(CaseStatus.IN_PROGRESS);
+        assertThat(reopened.getResolvedAt()).isNull();
+        assertThat(reopened.getClosedAt()).isNull();
+        assertThat(reopened.getResolutionSummary()).isNull();
     }
 
     @Test

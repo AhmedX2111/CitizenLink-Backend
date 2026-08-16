@@ -345,6 +345,16 @@ public class CaseServiceImpl implements CaseService {
             found.setClosedAt(OffsetDateTime.now());
         }
 
+        // M-05: REOPEN returns a resolved/closed case to IN_PROGRESS, so the fields
+        // that recorded the previous resolution must be cleared. Otherwise KPIs and
+        // reports (which count cases by resolvedAt) keep counting the case as resolved
+        // and the stale resolutionSummary leaks into the CSV export.
+        if (request.getAction() == WorkflowAction.REOPEN) {
+            found.setResolvedAt(null);
+            found.setClosedAt(null);
+            found.setResolutionSummary(null);
+        }
+
         Case saved = caseRepository.save(found);
 
         // WFL-02: every transition creates a timeline entry.
