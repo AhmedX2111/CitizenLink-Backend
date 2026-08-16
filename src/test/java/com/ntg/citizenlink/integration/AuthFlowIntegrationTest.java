@@ -90,9 +90,10 @@ class AuthFlowIntegrationTest {
         assertThat(body.get("role").asText()).isEqualTo("AGENT");
 
         Cookie cookie = refreshCookie(result);
-        assertThat(cookie).isNotNull();
+assertThat(cookie).isNotNull();
         assertThat(cookie.getValue()).isNotBlank();
         assertThat(cookie.isHttpOnly()).isTrue();
+        assertThat(result.getResponse().getHeader(HttpHeaders.SET_COOKIE)).contains("Secure");
         assertThat(cookie.getMaxAge()).isEqualTo(604800);
     }
 

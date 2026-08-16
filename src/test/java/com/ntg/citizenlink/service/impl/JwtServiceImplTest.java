@@ -38,7 +38,7 @@ class JwtServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        properties = new JwtProperties(SECRET, 3600_000L, 604800_000L);
+        properties = new JwtProperties(SECRET, 3600_000L, 604800_000L, true);
         jwtService = new JwtServiceImpl(properties);
         userDetails = new User(USERNAME, "password",
                 List.of(new SimpleGrantedAuthority("ROLE_HANDLER")));
@@ -100,7 +100,7 @@ class JwtServiceImplTest {
 
         @Test
         void shouldRejectExpiredToken() {
-            JwtProperties expired = new JwtProperties(SECRET, -1000L, 604800_000L);
+            JwtProperties expired = new JwtProperties(SECRET, -1000L, 604800_000L, true);
             JwtServiceImpl expiredService = new JwtServiceImpl(expired);
 
             String token = expiredService.generateToken(userDetails,
