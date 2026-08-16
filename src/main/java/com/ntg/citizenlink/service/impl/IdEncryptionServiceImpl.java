@@ -29,18 +29,20 @@ public class IdEncryptionServiceImpl implements IdEncryptionService {
 
     @Autowired
     public IdEncryptionServiceImpl(@Value("${encryption.secret-key}") String secretKeyString) {
-        byte[] keyBytes = secretKeyString.getBytes(StandardCharsets.UTF_8);
-        byte[] paddedKey = new byte[AES_KEY_SIZE];
-
-        for (int i = 0; i < AES_KEY_SIZE; i++) {
-            if (i < keyBytes.length) {
-                paddedKey[i] = keyBytes[i];
-            } else {
-                paddedKey[i] = (byte) (i % 256);
-            }
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(secretKeyString.trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("ENCRYPTION_SECRET_KEY must be a Base64-encoded key", e);
         }
 
-        this.secretKey = new SecretKeySpec(paddedKey, "AES");
+        if (keyBytes.length != AES_KEY_SIZE) {
+            throw new IllegalStateException(
+                    "ENCRYPTION_SECRET_KEY must decode to exactly " + AES_KEY_SIZE
+                            + " bytes for AES-256, got " + keyBytes.length);
+        }
+
+        this.secretKey = new SecretKeySpec(keyBytes, "AES");
         this.secureRandom = new SecureRandom();
 
         log.info("IdEncryptionService initialized with AES-256/GCM");
