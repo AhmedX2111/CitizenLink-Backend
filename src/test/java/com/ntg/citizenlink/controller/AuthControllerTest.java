@@ -67,7 +67,8 @@ class AuthControllerTest {
             return new JwtProperties(
                     "test-secret-0123456789abcdef0123456789abcdef",
                     900_000L,
-                    604_800_000L);
+                    604_800_000L,
+                    true);
         }
     }
 
@@ -98,11 +99,10 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_onSecureRequest_marksCookieSecure() throws Exception {
+    void login_marksRefreshCookieSecureByDefault() throws Exception {
         when(authService.login(any())).thenReturn(authResponse(ACCESS, REFRESH));
 
         mockMvc.perform(post("/api/v1/auth/login")
-                        .secure(true)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"agent01\",\"password\":\"secret\"}"))
                 .andExpect(status().isOk())
@@ -149,7 +149,9 @@ class AuthControllerTest {
                 .andExpect(header().string(HttpHeaders.SET_COOKIE,
                         containsString("refresh_token=new-refresh")))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE,
-                        containsString("HttpOnly")));
+                        containsString("HttpOnly")))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE,
+                        containsString("Secure")));
     }
 
     @Test

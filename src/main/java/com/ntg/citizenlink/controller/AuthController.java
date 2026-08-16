@@ -58,7 +58,7 @@ public class AuthController {
 
         ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", response.refreshToken())
                 .httpOnly(true)
-                .secure(servletRequest.isSecure())
+                .secure(jwtProperties.refreshCookieSecure() || servletRequest.isSecure())
                 .sameSite("Strict")
                 .path("/api/v1/auth")
                 .maxAge(jwtProperties.refreshExpirationMs() / 1000)
@@ -93,7 +93,7 @@ public class AuthController {
 
         ResponseCookie newRefreshCookie = ResponseCookie.from("refresh_token", response.refreshToken())
                 .httpOnly(true)
-                .secure(servletRequest.isSecure())
+                .secure(jwtProperties.refreshCookieSecure() || servletRequest.isSecure())
                 .sameSite("Strict")
                 .path("/api/v1/auth")
                 .maxAge(jwtProperties.refreshExpirationMs() / 1000)
@@ -132,7 +132,7 @@ public class AuthController {
 
         ResponseCookie clearCookie = ResponseCookie.from("refresh_token", "")
                 .httpOnly(true)
-                .secure(servletRequest.isSecure())
+                .secure(jwtProperties.refreshCookieSecure() || servletRequest.isSecure())
                 .sameSite("Strict")
                 .path("/api/v1/auth")
                 .maxAge(0)

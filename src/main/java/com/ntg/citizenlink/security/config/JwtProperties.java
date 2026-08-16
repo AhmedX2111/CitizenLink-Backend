@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.security.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
  * Binds the jwt.* block from application.yml/properties.
@@ -12,5 +13,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record JwtProperties(
         String secretKey,
         long expirationMs,
-        long refreshExpirationMs
+        long refreshExpirationMs,
+        @DefaultValue("true") boolean refreshCookieSecure
 ) {}
