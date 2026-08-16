@@ -4,6 +4,8 @@ import com.ntg.citizenlink.security.filter.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -33,7 +35,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *   POST /api/v1/auth/login  — obtain token
  *   GET  /api/v1/auth/me     — intentionally protected (needs valid token)
  *   GET  /                   — landing page (if served by Spring)
- *   Swagger UI & OpenAPI docs for local dev
+ *   Swagger UI & OpenAPI docs are anonymous ONLY outside the prod profile
+ *   (separate @Profile("!prod") filter chain); under prod they require a token.
  * Role-based rules (from BRD §4.3 permission matrix):
  *   /api/v1/users/**         → ADMIN only
  *   /api/v1/reports/**       → ADMIN, SUPERVISOR
@@ -75,13 +78,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
 
-                        // Swagger/OpenAPI — disable in production via profile if needed
-                        .requestMatchers(
-                                "/v3/api-docs/**",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html"
-                        ).permitAll()
-
                         // ── Role-restricted ───────────────────────────────────────
                         // Handler listing — SUPERVISOR and ADMIN (used for assignment/reassignment picker)
                         .requestMatchers("/api/v1/users/handlers").hasAnyRole("SUPERVISOR", "ADMIN")
@@ -112,6 +108,48 @@ public class SecurityConfig {
                 // Register JWT filter before Spring's own username/password filter
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    // -------------------------------------------------------------------------
+    // Swagger / OpenAPI
+    // -------------------------------------------------------------------------
+
+    /**
+     * M-08: the OpenAPI schema and Swagger UI are only served publicly OUTSIDE
+     * the production profile (springdoc 3.x maps these paths). Under the prod
+     * profile this chain is not created, the requests never match here and fall
+     * through to the main chain's `.anyRequest().authenticated()`, so an
+     * anonymous reader gets 401 instead of the API surface.
+     *
+     * This chain is scoped with securityMatcher BEFORE the main chain (@Order 1)
+     * so only the OpenAPI/Swagger paths are handled here; everything else goes
+     * through the main authenticated chain below.
+     */
+    @Bean
+    @Order(1)
+    @Profile("!prod")
+    public SecurityFilterChain swaggerUiSecurityFilterChain(HttpSecurity http) {
+        http
+                // Stateless + no CSRF — mirror the main chain; the UI only issues
+                // GETs for the docs, and its "Try it out" calls hit the real API /
+                // main chain which owns its own CSRF/stateless handling.
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+                .securityMatcher(
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html")
+
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll());
 
         return http.build();
     }
