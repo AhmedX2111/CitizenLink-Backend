@@ -28,7 +28,9 @@ jwt:
   refresh-expiration-ms: 604800000
 
 encryption:
-  secret-key: test-encryption-secret-key
+  # Must decode to exactly 32 bytes (AES-256). "test-encryption-secret-key" was
+  # silently zero-padded by the old implementation; the impl now rejects it.
+  secret-key: MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=
 
 app:
   # Not set: falls back to the JVM default zone, matching Year.now() uses in tests.
