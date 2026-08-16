@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -44,7 +45,9 @@ public class FileStorageService {
 
         // Copy file to upload directory
         Path targetPath = uploadPath.resolve(storedFileName);
-        Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        try (InputStream fileStream = file.getInputStream()) {
+            Files.copy(fileStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        }
 
         log.info("File stored successfully: {} -> {}", originalFileName, storedFileName);
 
