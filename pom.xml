@@ -145,6 +145,15 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-json</artifactId>
 		</dependency>
+
+		<!-- Loads configuration from the local .env file for development.
+		     Real environment variables always take precedence over .env
+		     values, so production behavior is unchanged. -->
+		<dependency>
+			<groupId>me.paulschwarz</groupId>
+			<artifactId>springboot4-dotenv</artifactId>
+			<version>5.1.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>
