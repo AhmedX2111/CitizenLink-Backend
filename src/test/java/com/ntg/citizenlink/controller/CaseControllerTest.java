@@ -155,11 +155,11 @@ class CaseControllerTest {
     }
 
     @Test
-    void create_returns403_whenUnauthenticated() throws Exception {
+    void create_returns401_whenUnauthenticated() throws Exception {
         mockMvc.perform(post("/api/v1/cases")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_CREATE_BODY))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -226,9 +226,9 @@ class CaseControllerTest {
     }
 
     @Test
-    void getById_returns403_whenUnauthenticated() throws Exception {
+    void getById_returns401_whenUnauthenticated() throws Exception {
         mockMvc.perform(get("/api/v1/cases/" + CASE_ID))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     // ---------------------------------------------------------------------

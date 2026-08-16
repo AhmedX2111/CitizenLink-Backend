@@ -203,8 +203,8 @@ class AuthControllerTest {
     }
 
     @Test
-    void me_returns403_whenUnauthenticated() throws Exception {
+    void me_returns401_whenUnauthenticated() throws Exception {
         mockMvc.perform(get("/api/v1/auth/me"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }
