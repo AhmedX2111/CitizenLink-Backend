@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -18,6 +19,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
@@ -97,6 +99,14 @@ public class SecurityConfig {
 
                         // ── Everything else requires a valid token ─────────────────
                         .anyRequest().authenticated()
+                )
+
+                .exceptionHandling(e -> e
+                        // M-07: unauthenticated requests must return 401 (not the default
+                        // 403 entry point). The client's silent-refresh interceptor keys
+                        // on 401 to transparently rotate an expired token; a 403 here is
+                        // indistinguishable from a genuine role failure.
+                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
                 )
 
                 // Register JWT filter before Spring's own username/password filter

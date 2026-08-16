@@ -279,12 +279,12 @@ class NotesAttachmentsAccessControlIntegrationTest {
     }
 
     @Test
-    void unauthenticated_cannotDeleteNote_returnsForbidden() throws Exception {
+    void unauthenticated_cannotDeleteNote_returnsUnauthorized() throws Exception {
         String caseId = createCase(ownerToken);
         String noteId = addNote(ownerToken, caseId);
 
         mockMvc.perform(delete("/api/v1/cases/{caseId}/notes/{noteId}", caseId, noteId))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
