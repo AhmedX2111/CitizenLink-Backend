@@ -1,33 +1,44 @@
 package com.ntg.citizenlink.exception;
 
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.security.core.AuthenticationException;
 import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     // -------------------------------------------------------------------------
     // Validation errors (@Valid failures) → 400 BAD_REQUEST
     // -------------------------------------------------------------------------
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         List<FieldErrorDetail> details = new ArrayList<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
             details.add(new FieldErrorDetail(fe.getField(), fe.getDefaultMessage()));
@@ -38,7 +49,66 @@ public class GlobalExceptionHandler {
                         : "unknown",
                 details);
         ErrorResponse body = new ErrorResponse("VALIDATION_ERROR", "Validation failed", details);
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().headers(headers).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - Constraint violations on simple-type parameters
+    // (e.g. @Min/@Max on @RequestParam). Spring 6.1+ method validation.
+    // -------------------------------------------------------------------------
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+            HandlerMethodValidationException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        List<FieldErrorDetail> details = new ArrayList<>();
+        for (ParameterValidationResult result : ex.getParameterValidationResults()) {
+            String parameter = result.getMethodParameter().getParameterName();
+            if (parameter == null) {
+                parameter = "arg" + result.getMethodParameter().getParameterIndex();
+            }
+            for (MessageSourceResolvable error : result.getResolvableErrors()) {
+                details.add(new FieldErrorDetail(parameter, error.getDefaultMessage()));
+            }
+        }
+        log.warn("Parameter validation failed: {}", details);
+        ErrorResponse body = new ErrorResponse("VALIDATION_ERROR", "Invalid parameter value(s)", details);
+        return ResponseEntity.badRequest().headers(headers).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - Malformed request body (e.g. invalid JSON)
+    // -------------------------------------------------------------------------
+    @Override
+    protected ResponseEntity<Object> handleHttpMessageNotReadable(
+            HttpMessageNotReadableException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        log.warn("Malformed request body: {}", safeMessage(ex));
+        ErrorResponse body = new ErrorResponse("BAD_REQUEST", "Malformed request body", null);
+        return ResponseEntity.badRequest().headers(headers).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - Missing required request parameter
+    // -------------------------------------------------------------------------
+    @Override
+    protected ResponseEntity<Object> handleMissingServletRequestParameter(
+            MissingServletRequestParameterException ex, HttpHeaders headers,
+            HttpStatusCode status, WebRequest request) {
+        log.warn("Missing required request parameter '{}'", ex.getParameterName());
+        ErrorResponse body = new ErrorResponse(
+                "BAD_REQUEST",
+                "Required request parameter '" + ex.getParameterName() + "' is not present",
+                null);
+        return ResponseEntity.badRequest().headers(headers).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 413 Payload Too Large - Upload exceeds the configured max size
+    // -------------------------------------------------------------------------
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        log.warn("Upload rejected: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse("PAYLOAD_TOO_LARGE", "Upload exceeds the maximum allowed size", null);
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).headers(headers).body(body);
     }
 
     // -------------------------------------------------------------------------
@@ -160,7 +230,31 @@ public class GlobalExceptionHandler {
     }
 
     // -------------------------------------------------------------------------
-    // 500 Internal Server Error - Generic fallback
+    // Every other Spring MVC exception (method not allowed, unsupported media
+    // type, not acceptable, ...) is handled by the inherited
+    // ResponseEntityExceptionHandler#handleException dispatcher and funnels
+    // into handleExceptionInternal below, which wraps them in our error
+    // envelope and logs client errors at WARN without a stack trace.
+    // -------------------------------------------------------------------------
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(
+            Exception ex, Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
+        int code = statusCode.value();
+        if (code >= 500) {
+            log.error("Spring MVC handler mapped {} to {}: {}",
+                    ex.getClass().getSimpleName(), code, ex.getMessage(), ex);
+        } else {
+            log.warn("Spring MVC {} error ({}) for {}: {}",
+                    code, ex.getClass().getSimpleName(), request.getDescription(false), safeMessage(ex));
+        }
+        ErrorResponse payload = new ErrorResponse(errorCodeFor(code), messageFor(code), null);
+        return ResponseEntity.status(statusCode).headers(headers).body(payload);
+    }
+
+    // -------------------------------------------------------------------------
+    // 500 Internal Server Error - Generic fallback. Only reached for exceptions
+    // that neither our handlers nor the inherited Spring MVC handlers cover,
+    // i.e. genuine server errors.
     // -------------------------------------------------------------------------
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
@@ -182,4 +276,37 @@ public class GlobalExceptionHandler {
             String field,
             String message
     ) {}
+
+    private String safeMessage(Exception ex) {
+        String message = ex.getMessage();
+        return message == null || message.isBlank() ? ex.getClass().getSimpleName() : message;
+    }
+
+    private String errorCodeFor(int code) {
+        return switch (code) {
+            case 400 -> "BAD_REQUEST";
+            case 401 -> "UNAUTHORIZED";
+            case 403 -> "FORBIDDEN";
+            case 404 -> "NOT_FOUND";
+            case 405 -> "METHOD_NOT_ALLOWED";
+            case 409 -> "CONFLICT";
+            case 413 -> "PAYLOAD_TOO_LARGE";
+            case 415 -> "UNSUPPORTED_MEDIA_TYPE";
+            default -> code >= 500 ? "INTERNAL_ERROR" : "HTTP_" + code;
+        };
+    }
+
+    private String messageFor(int code) {
+        return switch (code) {
+            case 400 -> "Invalid request";
+            case 401 -> "Unauthorized";
+            case 403 -> "Access denied";
+            case 404 -> "Resource not found";
+            case 405 -> "Method not allowed";
+            case 409 -> "Request conflicts with the current state of the resource";
+            case 413 -> "Request entity is too large";
+            case 415 -> "Unsupported media type";
+            default -> "An unexpected error occurred";
+        };
+    }
 }
