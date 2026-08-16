@@ -6,6 +6,7 @@ import com.ntg.citizenlink.dto.agent.request.UserSearchRequest;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.response.UserResponse;
 import com.ntg.citizenlink.enums.UserRole;
+import com.ntg.citizenlink.security.config.SecurityContextHelper;
 import com.ntg.citizenlink.service.UserAdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import java.util.UUID;
 public class UserAdminController {
 
     private final UserAdminService userAdminService;
+    private final SecurityContextHelper securityContextHelper;
 
     // ── US-29: List users ────────────────────────────────────────────────
 
@@ -74,8 +76,18 @@ public class UserAdminController {
     @PutMapping("/{id}/deactivate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> deactivateUser(@PathVariable UUID id) {
-        log.info("REST request: PUT /api/v1/users/{}/deactivate", id);
-        UserResponse response = userAdminService.deactivateUser(id);
+        UUID callerId = securityContextHelper.getAuthenticatedUserId();
+        log.info("REST request: PUT /api/v1/users/{}/deactivate by {}", id, callerId);
+        UserResponse response = userAdminService.deactivateUser(id, callerId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponse> activateUser(@PathVariable UUID id) {
+        UUID callerId = securityContextHelper.getAuthenticatedUserId();
+        log.info("REST request: PUT /api/v1/users/{}/activate by {}", id, callerId);
+        UserResponse response = userAdminService.activateUser(id, callerId);
         return ResponseEntity.ok(response);
     }
 }

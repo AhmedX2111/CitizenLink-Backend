@@ -8,6 +8,7 @@ import com.ntg.citizenlink.dto.agent.request.UserSearchRequest;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.response.UserResponse;
 import com.ntg.citizenlink.entities.AppUser;
+import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -105,6 +106,15 @@ public class UserAdminService {
             throw new DuplicateResourceException("User", "email", request.getEmail());
         }
 
+        // M-06: never allow the last remaining active ADMIN to be demoted to a
+        // non-ADMIN role — same permanent-lockout rationale as deactivation.
+        if (Boolean.TRUE.equals(user.getActive())
+                && user.getRole() == UserRole.ADMIN
+                && request.getRole() != UserRole.ADMIN
+                && userRepository.countByRoleAndActive(UserRole.ADMIN, true) <= 1) {
+            throw new IllegalArgumentException("Cannot demote the last active ADMIN account");
+        }
+
         user.setDisplayName(request.getDisplayName());
         user.setEmail(request.getEmail());
         user.setRole(request.getRole());
@@ -118,15 +128,44 @@ public class UserAdminService {
     // ── US-31: Deactivate/reactivate user ────────────────────────────────
 
     @Transactional
-    public UserResponse deactivateUser(UUID id) {
+    public UserResponse deactivateUser(UUID id, UUID callerId) {
+        log.info("Admin {} deactivating user: id={}", callerId, id);
+
+        if (id.equals(callerId)) {
+            throw new IllegalArgumentException("You cannot deactivate your own account");
+        }
+
         AppUser user = userRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", id));
 
-        user.setActive(!user.getActive());
+        // M-06: never allow the last remaining active ADMIN to be deactivated —
+        // otherwise /api/v1/users/** (ADMIN-only, no bootstrap path) would be
+        // permanently locked out.
+        if (Boolean.TRUE.equals(user.getActive())
+                && user.getRole() == UserRole.ADMIN
+                && userRepository.countByRoleAndActive(UserRole.ADMIN, true) <= 1) {
+            throw new IllegalArgumentException("Cannot deactivate the last active ADMIN account");
+        }
+
+        user.setActive(false);
         user.setRefreshTokenJti(null);
         AppUser saved = userRepository.save(user);
 
-        log.info("User {} status toggled: active={}, refresh tokens revoked", id, saved.getActive());
+        log.info("User {} deactivated (active=false), refresh tokens revoked", saved.getId());
+        return toResponse(saved);
+    }
+
+    @Transactional
+    public UserResponse activateUser(UUID id, UUID callerId) {
+        log.info("Admin {} reactivating user: id={}", callerId, id);
+
+        AppUser user = userRepository.findById(id)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", id));
+
+        user.setActive(true);
+        AppUser saved = userRepository.save(user);
+
+        log.info("User {} reactivated (active=true)", saved.getId());
         return toResponse(saved);
     }
 

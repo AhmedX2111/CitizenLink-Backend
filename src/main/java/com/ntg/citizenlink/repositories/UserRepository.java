@@ -25,6 +25,12 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
     boolean existsByEmail(String email);
 
     /**
+     * M-06: number of currently active users holding the given role. Used to
+     * refuse the last active ADMIN being deactivated or demoted.
+     */
+    long countByRoleAndActive(UserRole role, boolean active);
+
+    /**
      * US-29: paginated list with optional role and active filters.
      * Null parameters are treated as "no filter" via JPQL coalesce.
      */
