@@ -30,6 +30,10 @@ jwt:
 encryption:
   secret-key: test-encryption-secret-key
 
+app:
+  # Not set: falls back to the JVM default zone, matching Year.now() uses in tests.
+  time-zone:
+
 cors:
   allowed-origins: http://localhost:4200
   allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
@@ -42,7 +46,7 @@ file:
 logging:
   level:
     org.springframework.security: WARN
-    com.ntg.CitizenLink: DEBUG
+    com.ntg.citizenlink: DEBUG
     org.hibernate.SQL: WARN
     org.hibernate.orm.jdbc.bind: WARN
     com.zaxxer.hikari: WARN
