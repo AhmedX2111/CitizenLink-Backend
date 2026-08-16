@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Path;
 import java.util.List;
@@ -86,7 +87,7 @@ public class AttachmentServiceImpl implements AttachmentService {
 
             return toResponse(savedAttachment);
 
-        } catch (Exception e) {
+        } catch (IOException e) {
             log.error("Failed to upload attachment for case: {}", caseId, e);
             throw new RuntimeException("Failed to upload attachment: " + e.getMessage(), e);
         }
@@ -188,7 +189,7 @@ public class AttachmentServiceImpl implements AttachmentService {
 
             log.info("Attachment deleted successfully: {}", attachmentId);
 
-        } catch (Exception e) {
+        } catch (IOException e) {
             log.error("Failed to delete attachment: {}", attachmentId, e);
             throw new RuntimeException("Failed to delete attachment", e);
         }

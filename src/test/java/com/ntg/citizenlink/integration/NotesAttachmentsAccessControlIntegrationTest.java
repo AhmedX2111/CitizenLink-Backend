@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -150,6 +151,37 @@ class NotesAttachmentsAccessControlIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+    }
+
+    // -------------------------------------------------------------------------
+    // Attachments - M-04 validation failures must not become 500
+    // -------------------------------------------------------------------------
+
+    @Test
+    void disallowedFileType_returns400_withUsableMessage() throws Exception {
+        String caseId = createCase(ownerToken);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "notes.txt", MediaType.TEXT_PLAIN_VALUE, "hello world".getBytes());
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("File type not allowed")));
+    }
+
+    @Test
+    void emptyFile_returns400_not500() throws Exception {
+        String caseId = createCase(ownerToken);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "empty.pdf", MediaType.APPLICATION_PDF_VALUE, new byte[0]);
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     // -------------------------------------------------------------------------
