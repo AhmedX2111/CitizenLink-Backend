@@ -1,14 +1,17 @@
 package com.ntg.citizenlink.repositories;
 
+import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Citizen;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.support.EntityFactory;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
 import java.time.OffsetDateTime;
@@ -252,6 +255,28 @@ class CaseRepositoryTest {
                 .containsEntry(CaseStatus.CANCELLED, 1L)
                 .containsEntry(CaseStatus.IN_PROGRESS, 1L)
                 .hasSize(4);
+    }
+
+    @Test
+    void findAll_withSpecification_initializesAssociationsReadByMapper() {
+        savedCase(citizenA, CaseStatus.NEW);
+        savedCase(citizenA, CaseStatus.ASSIGNED);
+        savedCase(citizenA, CaseStatus.RESOLVED);
+
+        CaseSpecification spec = new CaseSpecification(
+                new CaseSearchRequest(), null, null);
+
+        Page<Case> page = caseRepository.findAll(spec, PageRequest.of(0, 2));
+
+        assertThat(page.getTotalElements()).isEqualTo(3);
+        assertThat(page.getContent()).hasSize(2);
+        for (Case c : page.getContent()) {
+            assertThat(Hibernate.isInitialized(c.getCitizen())).isTrue();
+            assertThat(Hibernate.isInitialized(c.getCategory())).isTrue();
+            assertThat(Hibernate.isInitialized(c.getDepartment())).isTrue();
+            assertThat(Hibernate.isInitialized(c.getCreatedByUser())).isTrue();
+            assertThat(Hibernate.isInitialized(c.getAssignedToUser())).isTrue();
+        }
     }
 
     @Test

@@ -5,8 +5,11 @@ import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.dto.agent.response.MyOpenCaseResponse;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.CaseStatus;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -35,6 +38,22 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
      * Checks for duplicate case_number before insert.
      */
     boolean existsByCaseNumber(String caseNumber);
+
+    /**
+     * All filtered/paginated search goes through this override so the five
+     * associations CaseMapper.toResponse reads (citizen, category, department,
+     * createdByUser, assignedToUser) are fetched in the same query.
+     *
+     * M-18: without the entity graph each mapped row triggered up to 5 lazy
+     * selects (up to 100 extra queries for a default 20-row page). All five
+     * associations are to-one, so the fetch uses SQL LEFT JOINs and Hibernate
+     * still applies LIMIT/OFFSET in SQL — no duplicate rows, no in-memory
+     * pagination, and the generated count query is unaffected.
+     */
+    @EntityGraph(attributePaths = {"citizen", "category", "department",
+            "createdByUser", "assignedToUser"})
+    @Override
+    Page<Case> findAll(Specification<Case> spec, Pageable pageable);
 
     // Count total cases for a citizen
     long countByCitizenId(UUID citizenId);
