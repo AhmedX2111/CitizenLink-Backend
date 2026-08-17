@@ -24,6 +24,7 @@ public class CreateCaseRequest {
     private String subject;
 
     @NotBlank(message = "Description is required")
+    @Size(max = 5000, message = "Description must not exceed 5000 characters")
     private String description;
 
     @NotNull(message = "Case type is required")
