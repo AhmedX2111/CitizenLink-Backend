@@ -15,6 +15,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,6 +48,17 @@ class CaseRepositoryTest {
     private Case savedCase(Citizen citizen, CaseStatus status) {
         Case c = EntityFactory.aCase(citizen, category, department, creator);
         c.setStatus(status);
+        return caseRepository.save(c);
+    }
+
+    private Case savedCase(Citizen citizen, CaseStatus status,
+                           com.ntg.citizenlink.entities.AppUser createdBy,
+                           com.ntg.citizenlink.entities.AppUser assignedTo) {
+        Case c = EntityFactory.aCase(citizen, category, department, createdBy);
+        c.setStatus(status);
+        if (assignedTo != null) {
+            c.setAssignedToUser(assignedTo);
+        }
         return caseRepository.save(c);
     }
 
@@ -141,17 +153,105 @@ class CaseRepositoryTest {
     }
 
     @Test
-    void findByCitizenIdOrderByCreatedAtDesc_returnsOnlyThatCitizensCases() {
+    void findVisibleByCitizenIdOrderByCreatedAtDesc_adminSeesAllCitizenCases() {
         Case c1 = savedCase(citizenA, CaseStatus.NEW);
         Case c2 = savedCase(citizenA, CaseStatus.ASSIGNED);
         savedCase(citizenB, CaseStatus.NEW);
 
-        List<Case> result = caseRepository.findByCitizenIdOrderByCreatedAtDesc(
-                citizenA.getId(), PageRequest.of(0, 10));
+        List<Case> result = caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+                citizenA.getId(), null, null, PageRequest.of(0, 10));
 
         assertThat(result).hasSize(2);
         assertThat(result).extracting(Case::getId)
                 .containsExactlyInAnyOrder(c1.getId(), c2.getId());
+    }
+
+    @Test
+    void findVisibleByCitizenIdOrderByCreatedAtDesc_agentSeesOnlyOwnCases() {
+        var otherAgent = appUserRepository.save(
+                EntityFactory.appUser(com.ntg.citizenlink.enums.UserRole.AGENT));
+
+        Case own = savedCase(citizenA, CaseStatus.NEW);
+        savedCase(citizenA, CaseStatus.ASSIGNED, otherAgent, null);
+
+        List<Case> result = caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+                citizenA.getId(), creator.getId(), null, PageRequest.of(0, 10));
+
+        assertThat(result).extracting(Case::getId)
+                .containsExactly(own.getId());
+    }
+
+    @Test
+    void findVisibleByCitizenIdOrderByCreatedAtDesc_handlerSeesOnlyAssignedCases() {
+        var handler1 = appUserRepository.save(
+                EntityFactory.appUser(com.ntg.citizenlink.enums.UserRole.HANDLER));
+        var handler2 = appUserRepository.save(
+                EntityFactory.appUser(com.ntg.citizenlink.enums.UserRole.HANDLER));
+
+        Case mine = savedCase(citizenA, CaseStatus.NEW, creator, handler1);
+        savedCase(citizenA, CaseStatus.NEW, creator, handler2);
+        savedCase(citizenA, CaseStatus.NEW, creator, null);
+
+        List<Case> result = caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+                citizenA.getId(), null, handler1.getId(), PageRequest.of(0, 10));
+
+        assertThat(result).extracting(Case::getId)
+                .containsExactly(mine.getId());
+    }
+
+    @Test
+    void findVisibleByCitizenIdOrderByCreatedAtDesc_limitsToFiveAndOrdersByCreatedAtDesc()
+            throws InterruptedException {
+        for (int i = 0; i < 7; i++) {
+            savedCase(citizenA, CaseStatus.NEW);
+            Thread.sleep(2);
+        }
+
+        List<Case> result = caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+                citizenA.getId(), creator.getId(), null, PageRequest.of(0, 5));
+
+        List<Case> all = caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+                citizenA.getId(), creator.getId(), null, PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(5);
+        assertThat(result).extracting(Case::getId)
+                .containsExactlyElementsOf(all.stream().limit(5).map(Case::getId).collect(toList()));
+    }
+
+    @Test
+    void countVisibleByCitizenIdByStatus_groupsOnlyVisibleCasesByStatus() {
+        var otherAgent = appUserRepository.save(
+                EntityFactory.appUser(com.ntg.citizenlink.enums.UserRole.AGENT));
+
+        savedCase(citizenA, CaseStatus.NEW);
+        savedCase(citizenA, CaseStatus.RESOLVED);
+        savedCase(citizenA, CaseStatus.CANCELLED);
+        savedCase(citizenA, CaseStatus.IN_PROGRESS, otherAgent, null);
+        savedCase(citizenB, CaseStatus.NEW);
+
+        Map<CaseStatus, Long> visibleToCreator = caseRepository
+                .countVisibleByCitizenIdByStatus(citizenA.getId(), creator.getId(), null)
+                .stream()
+                .collect(toMap(row -> (CaseStatus) row[0], row -> (Long) row[1]));
+
+        assertThat(visibleToCreator)
+                .containsEntry(CaseStatus.NEW, 1L)
+                .containsEntry(CaseStatus.RESOLVED, 1L)
+                .containsEntry(CaseStatus.CANCELLED, 1L)
+                .doesNotContainEntry(CaseStatus.IN_PROGRESS, 1L)
+                .hasSize(3);
+
+        Map<CaseStatus, Long> visibleToAdmin = caseRepository
+                .countVisibleByCitizenIdByStatus(citizenA.getId(), null, null)
+                .stream()
+                .collect(toMap(row -> (CaseStatus) row[0], row -> (Long) row[1]));
+
+        assertThat(visibleToAdmin)
+                .containsEntry(CaseStatus.NEW, 1L)
+                .containsEntry(CaseStatus.RESOLVED, 1L)
+                .containsEntry(CaseStatus.CANCELLED, 1L)
+                .containsEntry(CaseStatus.IN_PROGRESS, 1L)
+                .hasSize(4);
     }
 
     @Test
