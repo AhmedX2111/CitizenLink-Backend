@@ -2,6 +2,7 @@ package com.ntg.citizenlink.dto.agent.request;
 
 import com.ntg.citizenlink.enums.WorkflowAction;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -22,7 +23,9 @@ public class CaseTransitionRequest {
     @NotNull(message = "Action is required")
     private WorkflowAction action;
 
+    @Size(max = 5000, message = "Comment must not exceed 5000 characters")
     private String comment;
+    @Size(max = 5000, message = "Resolution summary must not exceed 5000 characters")
     private String resolutionSummary;
 
     private UUID assignedToUserId;

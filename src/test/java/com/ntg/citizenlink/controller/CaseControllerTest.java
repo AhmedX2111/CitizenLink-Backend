@@ -155,6 +155,58 @@ class CaseControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "AGENT")
+    void create_returns400_whenDescriptionTooLong() throws Exception {
+        String tooLong = "d".repeat(5001);
+        String body = """
+                {
+                  "subject": "Water leak",
+                  "description": "%s",
+                  "type": "COMPLAINT",
+                  "priority": "HIGH",
+                  "channel": "PHONE",
+                  "citizenNationalId": "1234567890123456",
+                  "categoryId": "33333333-3333-3333-3333-333333333333",
+                  "departmentId": "44444444-4444-4444-4444-444444444444"
+                }
+                """.formatted(tooLong);
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(caseService, never()).createCase(any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "AGENT")
+    void create_returns201_whenDescriptionAtMaxLength() throws Exception {
+        when(securityContextHelper.getAuthenticatedUserId()).thenReturn(USER_ID);
+        when(caseService.createCase(any(), eq(USER_ID))).thenReturn(caseResponse());
+
+        String atLimit = "d".repeat(5000);
+        String body = """
+                {
+                  "subject": "Water leak",
+                  "description": "%s",
+                  "type": "COMPLAINT",
+                  "priority": "HIGH",
+                  "channel": "PHONE",
+                  "citizenNationalId": "1234567890123456",
+                  "categoryId": "33333333-3333-3333-3333-333333333333",
+                  "departmentId": "44444444-4444-4444-4444-444444444444"
+                }
+                """.formatted(atLimit);
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void create_returns401_whenUnauthenticated() throws Exception {
         mockMvc.perform(post("/api/v1/cases")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -324,5 +376,31 @@ class CaseControllerTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @WithMockUser(roles = "HANDLER")
+    void transition_returns400_whenCommentTooLong() throws Exception {
+        String tooLong = "c".repeat(5001);
+        mockMvc.perform(post("/api/v1/cases/" + CASE_ID + "/transition")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"SUSPEND\",\"comment\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(caseService, never()).transitionCase(any(), any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "HANDLER")
+    void transition_returns400_whenResolutionSummaryTooLong() throws Exception {
+        String tooLong = "r".repeat(5001);
+        mockMvc.perform(post("/api/v1/cases/" + CASE_ID + "/transition")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"RESOLVE\",\"resolutionSummary\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(caseService, never()).transitionCase(any(), any(), any());
     }
 }
