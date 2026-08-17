@@ -55,19 +55,14 @@ public class AttachmentServiceImpl implements AttachmentService {
             Tika tika = new Tika();
             String detectedMimeType = tika.detect(file.getInputStream());
 
-            List<String> allowedTypes = List.of(
-                    "application/pdf",
-                    "image/png",
-                    "image/jpeg",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            );
+            // M-13: resolve/canonicalize the detected type against the whitelist
+            // (also handling Tika's generic application/x-tika-ooxml and
+            // application/zip detections of valid .docx files).
+            String mimeType = fileStorageService.canonicalMimeType(detectedMimeType, file);
 
-            if (!allowedTypes.contains(detectedMimeType)) {
-                throw new IllegalArgumentException("File type not allowed: " + detectedMimeType);
-            }
-
-            // Store file on disk
-            String storedFileName = fileStorageService.storeFile(file);
+            // Store file on disk (extension derived from the canonical MIME type,
+            // never from the client-controlled original filename — M-13)
+            String storedFileName = fileStorageService.storeFile(file, mimeType);
             String originalFileName = file.getOriginalFilename();
             long fileSize = file.getSize();
 
@@ -76,7 +71,7 @@ public class AttachmentServiceImpl implements AttachmentService {
             attachment.setCaseEntity(caseEntity);
             attachment.setOriginalFileName(originalFileName);
             attachment.setStoredFileName(storedFileName);
-            attachment.setMimeType(detectedMimeType);
+            attachment.setMimeType(mimeType);
             attachment.setFileSizeBytes(fileSize);
             attachment.setStoragePath(fileStorageProperties.getUploadDir() + "/" + storedFileName);
             attachment.setUploadedByUser(uploadedBy);
