@@ -243,6 +243,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // -------------------------------------------------------------------------
+    // 400 Bad Request - Malformed/corrupt encrypted ID (M-19). The ciphertext
+    // is attacker-controlled, so it is never logged and never echoed back.
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(InvalidEncryptedIdException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidEncryptedId(InvalidEncryptedIdException ex) {
+        log.warn("Invalid encrypted ID rejected");
+        ErrorResponse body = new ErrorResponse("INVALID_ENCRYPTED_ID", ex.getMessage(), null);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    // -------------------------------------------------------------------------
     // Every other Spring MVC exception (method not allowed, unsupported media
     // type, not acceptable, ...) is handled by the inherited
     // ResponseEntityExceptionHandler#handleException dispatcher and funnels

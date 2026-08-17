@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.controller;
 
 import com.ntg.citizenlink.config.TestSecurityConfig;
+import com.ntg.citizenlink.exception.InvalidEncryptedIdException;
 import com.ntg.citizenlink.security.JwtBlocklist;
 import com.ntg.citizenlink.security.config.SecurityContextHelper;
 import com.ntg.citizenlink.service.ReportService;
@@ -119,6 +120,16 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/api/v1/cases/{caseId}/notes", CASE_ID))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+    }
+
+    @Test
+    void invalidEncryptedId_returns400_withEnvelope() throws Exception {
+        when(caseNoteService.getNotesByCaseId(any(), any()))
+                .thenThrow(new InvalidEncryptedIdException("Invalid or corrupted encrypted ID."));
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes", CASE_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_ENCRYPTED_ID"))
+                .andExpect(jsonPath("$.message").value("Invalid or corrupted encrypted ID."));
     }
 
     @Test

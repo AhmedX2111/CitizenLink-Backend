@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service.impl;
 
+import com.ntg.citizenlink.exception.InvalidEncryptedIdException;
 import com.ntg.citizenlink.service.interfaces.IdEncryptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,8 +85,24 @@ class IdEncryptionServiceImplTest {
 
         @Test
         void decryptId_throwsOnGarbage() {
-            assertThatThrownBy(() -> service.decryptId("not-valid-ciphertext"))
-                    .isInstanceOf(RuntimeException.class);
+            String input = "not-valid-ciphertext";
+            assertThatThrownBy(() -> service.decryptId(input))
+                    .isInstanceOf(InvalidEncryptedIdException.class)
+                    .hasMessageNotContaining(input);
+        }
+
+        @Test
+        void decryptId_tamperedToken_throwsTypedException() {
+            String encrypted = service.encryptId(UUID.randomUUID());
+            int mid = encrypted.length() / 2;
+            char original = encrypted.charAt(mid);
+            char replacement = (original == 'A') ? 'B' : 'A';
+            String tampered = encrypted.substring(0, mid) + replacement
+                    + encrypted.substring(mid + 1);
+            assertThat(tampered).isNotEqualTo(encrypted);
+
+            assertThatThrownBy(() -> service.decryptId(tampered))
+                    .isInstanceOf(InvalidEncryptedIdException.class);
         }
 
         @Test
