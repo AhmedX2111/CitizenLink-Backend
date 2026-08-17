@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service.impl;
 
+import com.ntg.citizenlink.constants.DateRangeValidator;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.service.interfaces.CsvExportService;
@@ -17,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -27,7 +27,6 @@ public class CsvExportServiceImpl implements CsvExportService {
 
     private static final int PAGE_SIZE = 1000;
     private static final int DEFAULT_RANGE_DAYS = 30;
-    private static final long MAX_RANGE_DAYS = 366;
 
     private static final String HEADER = String.join(",",
             "Case Number",
@@ -58,7 +57,7 @@ public class CsvExportServiceImpl implements CsvExportService {
     public void exportCasesCsv(OutputStream out, OffsetDateTime startDate, OffsetDateTime endDate) throws IOException {
         OffsetDateTime start = startDate != null ? startDate : OffsetDateTime.now(ZoneOffset.UTC).minusDays(DEFAULT_RANGE_DAYS);
         OffsetDateTime end = endDate != null ? endDate : OffsetDateTime.now(ZoneOffset.UTC);
-        validateRange(start, end);
+        DateRangeValidator.validate(start, end);
 
         BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
 
@@ -77,17 +76,6 @@ public class CsvExportServiceImpl implements CsvExportService {
             writer.flush();
             pageNumber++;
         } while (slice.hasNext());
-    }
-
-    private void validateRange(OffsetDateTime start, OffsetDateTime end) {
-        if (start.isAfter(end)) {
-            throw new IllegalArgumentException("Start date must not be after end date");
-        }
-        long days = ChronoUnit.DAYS.between(start, end);
-        if (days > MAX_RANGE_DAYS) {
-            throw new IllegalArgumentException(
-                    "Requested date range exceeds the maximum allowed span of " + MAX_RANGE_DAYS + " days");
-        }
     }
 
     private String toCsvRow(Case c) {

@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service;
 
+import com.ntg.citizenlink.constants.DateRangeValidator;
 import com.ntg.citizenlink.dto.agent.response.VolumeReportResponse;
 import com.ntg.citizenlink.repositories.ReportRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,11 @@ public class ReportService {
      */
     @Transactional(readOnly = true)
     public VolumeReportResponse getVolumeReport(LocalDate from, LocalDate to) {
+        // M-16: the range arrives straight from query parameters — an unbounded
+        // span would build millions of DailyVolumeRow objects in the heap. Bound
+        // it up front (400 via IllegalArgumentException) before any query.
+        DateRangeValidator.validate(from, to);
+
         log.info("Building volume report from {} to {}", from, to);
 
         OffsetDateTime fromDt = from.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime();
