@@ -137,4 +137,20 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value("A record with this value already exists."))
                 .andExpect(jsonPath("$.message").value(not(containsString("4123456789012"))));
     }
+
+    @Test
+    void volumeReport_withExcessiveRange_returns400() throws Exception {
+        // M-16: an unbounded range is rejected with 400 BAD_REQUEST; the
+        // service raises IllegalArgumentException and the handler surfaces it.
+        when(reportService.getVolumeReport(any(), any()))
+                .thenThrow(new IllegalArgumentException(
+                        "Requested date range exceeds the maximum allowed span of 366 days"));
+        mockMvc.perform(get("/api/v1/reports/volume")
+                        .param("from", "0001-01-01")
+                        .param("to", "9999-12-31"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message")
+                        .value("Requested date range exceeds the maximum allowed span of 366 days"));
+    }
 }
