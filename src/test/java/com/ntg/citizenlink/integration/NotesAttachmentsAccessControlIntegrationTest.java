@@ -27,6 +27,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -182,6 +184,80 @@ class NotesAttachmentsAccessControlIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Attachments - M-13 the stored extension must follow content, not filename
+    // -------------------------------------------------------------------------
+
+    @Test
+    void uploadWithMisleadingClientExtension_storesDetectedExtension() throws Exception {
+        // PDF content submitted under a .html name must be stored as <uuid>.pdf —
+        // the client-controlled extension is never used (M-13).
+        String caseId = createCase(ownerToken);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "report.html", MediaType.APPLICATION_PDF_VALUE, PDF_BYTES);
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.storedFileName").value(endsWith(".pdf")))
+                .andExpect(jsonPath("$.originalFileName").value("report.html"));
+    }
+
+    @Test
+    void uploadWithTraversalClientFilename_staysInsideUploadDir() throws Exception {
+        // A ../-bearing client filename must not influence the stored path (M-13).
+        String caseId = createCase(ownerToken);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "../../evil.sh", MediaType.APPLICATION_PDF_VALUE, PDF_BYTES);
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.storedFileName").value(endsWith(".pdf")))
+                .andExpect(jsonPath("$.storedFileName").value(not(containsString(".."))));
+    }
+
+    @Test
+    void uploadDocxRegardlessOfTikaDetectionBucket_storedAsDocx() throws Exception {
+        // A valid .docx (a real OOXML zip) must be accepted and stored as
+        // <uuid>.docx. Tika may report it as the specific wordprocessingml type,
+        // as application/x-tika-ooxml, or as application/zip — all three must
+        // canonicalize to the docx content type (M-13).
+        String caseId = createCase(ownerToken);
+        byte[] docxBytes = docxLikeZip();
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "Claude_Code_Explained_Detailed (1).docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                docxBytes);
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.storedFileName").value(endsWith(".docx")))
+                .andExpect(jsonPath("$.originalFileName").value("Claude_Code_Explained_Detailed (1).docx"));
+    }
+
+    private static byte[] docxLikeZip() throws Exception {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(out)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("[Content_Types].xml"));
+            zip.write(("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                    + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                    + "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                    + "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+                    + "</Types>").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new java.util.zip.ZipEntry("word/document.xml"));
+            zip.write("<?xml version=\"1.0\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p/></w:body></w:document>"
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        return out.toByteArray();
     }
 
     // -------------------------------------------------------------------------
