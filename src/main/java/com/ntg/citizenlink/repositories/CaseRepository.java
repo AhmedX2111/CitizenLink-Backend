@@ -47,16 +47,51 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
     @Query("SELECT COUNT(c) FROM Case c WHERE c.citizen.id = :citizenId AND c.status IN :statuses")
     long countByCitizenIdAndStatusIn(@Param("citizenId") UUID citizenId, @Param("statuses") List<CaseStatus> statuses);
 
-    // Get recent cases for a citizen
+    // ── Citizen profile (M-17): visibility-aware recent cases + totals ─────
+    /**
+     * Top recent cases for a citizen, restricted to what the requester may
+     * see. Visibility is encoded the same way as CaseSpecification:
+     *   - both filters null  -> ADMIN/SUPERVISOR sees all of the citizen's cases
+     *   - createdByUserId set -> only cases the AGENT created
+     *   - assignedToUserId set -> only cases assigned to the HANDLER
+     * Uses LEFT JOIN FETCH so the caller never triggers a lazy assignedToUser
+     * load per case (all associations are to-one, so Hibernate still applies
+     * the LIMIT in SQL).
+     */
     @Query("""
-    SELECT c
-    FROM Case c
-    WHERE c.citizen.id = :citizenId
-    ORDER BY c.createdAt DESC
-""")
-    List<Case> findByCitizenIdOrderByCreatedAtDesc(
+        SELECT c
+        FROM Case c
+        LEFT JOIN FETCH c.assignedToUser
+        WHERE c.citizen.id = :citizenId
+          AND (:createdByUserId IS NULL OR c.createdByUser.id = :createdByUserId)
+          AND (:assignedToUserId IS NULL OR c.assignedToUser.id = :assignedToUserId)
+        ORDER BY c.createdAt DESC, c.id DESC
+        """)
+    List<Case> findVisibleByCitizenIdOrderByCreatedAtDesc(
             @Param("citizenId") UUID citizenId,
+            @Param("createdByUserId") UUID createdByUserId,
+            @Param("assignedToUserId") UUID assignedToUserId,
             Pageable pageable
+    );
+
+    /**
+     * Counts a citizen's cases grouped by status, applying the same
+     * requester-visibility restriction as findVisibleByCitizenIdOrderByCreatedAtDesc.
+     * Returns Object[]{CaseStatus, Long} pairs for statuses with at least one
+     * visible case; statuses with zero visible cases are not included.
+     */
+    @Query("""
+        SELECT c.status, COUNT(c)
+        FROM Case c
+        WHERE c.citizen.id = :citizenId
+          AND (:createdByUserId IS NULL OR c.createdByUser.id = :createdByUserId)
+          AND (:assignedToUserId IS NULL OR c.assignedToUser.id = :assignedToUserId)
+        GROUP BY c.status
+        """)
+    List<Object[]> countVisibleByCitizenIdByStatus(
+            @Param("citizenId") UUID citizenId,
+            @Param("createdByUserId") UUID createdByUserId,
+            @Param("assignedToUserId") UUID assignedToUserId
     );
 
     // ── US-04: KPI counts ──────────────────────────────────────────────

@@ -15,7 +15,6 @@ import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.repositories.CitizenRepository;
-import com.ntg.citizenlink.security.CaseAccessPolicy;
 import com.ntg.citizenlink.service.interfaces.CitizenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +37,6 @@ public class CitizenServiceImpl implements CitizenService {
     private final CitizenRepository citizenRepository;
     private final AppUserRepository appUserRepository;
     private final CaseRepository caseRepository;
-    private final CaseAccessPolicy caseAccessPolicy;
 
     @Override
     @Transactional(readOnly = true)
@@ -151,26 +149,51 @@ public class CitizenServiceImpl implements CitizenService {
         AppUser requester = appUserRepository.findById(requesterId)
                 .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
 
-        List<Case> allCases = caseRepository.findByCitizenIdOrderByCreatedAtDesc(
-                id, Pageable.unpaged()
-        ).stream()
-                .filter(c -> caseAccessPolicy.canView(c, requester))
-                .collect(Collectors.toList());
+        // M-17: push the visibility rule into the queries instead of fetching
+        // every case and filtering in memory. Same role->filter mapping as
+        // CaseServiceImpl.searchCases.
+        UUID createdByFilter = null;
+        UUID assignedToFilter = null;
 
-        long totalCases = allCases.size();
-        long openCases = allCases.stream()
-                .filter(c -> c.getStatus() != CaseStatus.RESOLVED
-                        && c.getStatus() != CaseStatus.CLOSED
-                        && c.getStatus() != CaseStatus.CANCELLED)
-                .count();
-        long resolvedCases = allCases.stream()
-                .filter(c -> c.getStatus() == CaseStatus.RESOLVED
-                        || c.getStatus() == CaseStatus.CLOSED)
-                .count();
+        switch (requester.getRole()) {
+            case ADMIN:
+            case SUPERVISOR:
+                // both null — see all of the citizen's cases
+                break;
+            case HANDLER:
+                assignedToFilter = requesterId;
+                break;
+            default: // AGENT
+                createdByFilter = requesterId;
+                break;
+        }
 
-        List<Case> recentCases = allCases.stream()
-                .limit(5)
-                .collect(Collectors.toList());
+        Map<CaseStatus, Long> countsByStatus = caseRepository
+                .countVisibleByCitizenIdByStatus(id, createdByFilter, assignedToFilter)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (CaseStatus) row[0],
+                        row -> (Long) row[1]
+                ));
+
+        long totalCases = countsByStatus.values().stream()
+                .mapToLong(Long::longValue)
+                .sum();
+        long openCases = countsByStatus.entrySet().stream()
+                .filter(e -> e.getKey() != CaseStatus.RESOLVED
+                        && e.getKey() != CaseStatus.CLOSED
+                        && e.getKey() != CaseStatus.CANCELLED)
+                .mapToLong(e -> e.getValue())
+                .sum();
+        long resolvedCases = countsByStatus.entrySet().stream()
+                .filter(e -> e.getKey() == CaseStatus.RESOLVED
+                        || e.getKey() == CaseStatus.CLOSED)
+                .mapToLong(e -> e.getValue())
+                .sum();
+
+        List<Case> recentCases = caseRepository
+                .findVisibleByCitizenIdOrderByCreatedAtDesc(
+                        id, createdByFilter, assignedToFilter, PageRequest.of(0, 5));
 
         return CitizenProfileResponse.builder()
                 .id(citizen.getId())
