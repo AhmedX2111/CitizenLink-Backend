@@ -38,7 +38,15 @@ public class CitizenController {
     public ResponseEntity<PagedResponse<CitizenResponse>> searchCitizens(
             @Valid CitizenSearchRequest request
     ) {
-        log.info("GET /api/v1/citizens/search - searchTerm: {}, page: {}, size: {}", request.getSearchTerm(), request.getPage(), request.getSize());
+        // M-15: the search term may be a national ID or phone number — a
+        // government identifier. Never log the raw value; log only whether one
+        // was supplied and its length so traffic stays correlatable and sized
+        // without exposing the identifier (logs/citizenlink.json, 30-day ret.).
+        String searchTerm = request.getSearchTerm();
+        log.info("GET /api/v1/citizens/search - termPresent: {}, termLength: {}, page: {}, size: {}",
+                searchTerm != null && !searchTerm.isBlank(),
+                searchTerm != null ? searchTerm.length() : 0,
+                request.getPage(), request.getSize());
 
         PagedResponse<CitizenResponse> response = citizenService.searchCitizens(request);
 

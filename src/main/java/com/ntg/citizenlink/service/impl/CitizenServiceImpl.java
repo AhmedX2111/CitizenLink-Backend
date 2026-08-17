@@ -43,7 +43,12 @@ public class CitizenServiceImpl implements CitizenService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
-        log.info("Searching citizens with term: '{}'", request.getSearchTerm());
+        // M-15: the search term may be a national ID or phone number. Log only
+        // presence + length, never the identifier itself.
+        String searchTerm = request.getSearchTerm();
+        log.info("Searching citizens - termPresent: {}, termLength: {}",
+                searchTerm != null && !searchTerm.isBlank(),
+                searchTerm != null ? searchTerm.length() : 0);
 
         if (request.isEmpty()) {
             log.warn("Empty search term provided");

@@ -11,11 +11,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -116,5 +119,22 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/api/v1/cases/{caseId}/notes", CASE_ID))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+    }
+
+    @Test
+    void dataIntegrityViolation_returns409_withGenericEnvelope() throws Exception {
+        // M-15: a DB constraint failure (message contains the conflicting
+        // national ID + schema) must map to a generic 409 — the identifier is
+        // never echoed to the client.
+        when(caseNoteService.getNotesByCaseId(any(), any())).thenThrow(new DataIntegrityViolationException(
+                "could not execute statement; constraint [citizen_unique_national_id]; "
+                + "nested exception is org.postgresql.util.PSQLException: "
+                + "ERROR: duplicate key value violates unique constraint \"citizen_unique_national_id\" "
+                + "Detail: Key (national_id)=(4123456789012) already exists."));
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes", CASE_ID))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DATA_INTEGRITY_VIOLATION"))
+                .andExpect(jsonPath("$.message").value("A record with this value already exists."))
+                .andExpect(jsonPath("$.message").value(not(containsString("4123456789012"))));
     }
 }
