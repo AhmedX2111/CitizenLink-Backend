@@ -38,6 +38,7 @@ public class CaseMapper {
             r.setCitizenId(c.getCitizen().getId());
             r.setCitizenFullName(c.getCitizen().getFullName());
             r.setCitizenNationalId(c.getCitizen().getNationalId());
+            r.setCitizenPhone(c.getCitizen().getPhone());
         }
 
         // Category
@@ -45,7 +46,6 @@ public class CaseMapper {
             r.setCategoryId(c.getCategory().getId());
             r.setCategoryNameEn(c.getCategory().getNameEn());
             r.setCategoryNameAr(c.getCategory().getNameAr());
-            r.setCitizenPhone(c.getCitizen().getPhone());
         }
 
         // Department
