@@ -23,13 +23,17 @@ spring:
       mode: never
 
 jwt:
-  secret-key: citizenlink-test-jwt-secret-key-0123456789-0123456789-0123456789
+  # TEST-ONLY dummy secret - not a real credential and never used in production.
+  # Production reads jwt.secret-key from the JWT_SECRET_KEY environment variable.
+  secret-key: test-only-dummy-jwt-secret-012345678901234567890123456789012345678901234567890123456789
   expiration-ms: 86400000
   refresh-expiration-ms: 604800000
 
 encryption:
-  # Must decode to exactly 32 bytes (AES-256). "test-encryption-secret-key" was
-  # silently zero-padded by the old implementation; the impl now rejects it.
+  # TEST-ONLY dummy key - not a real secret and never used in production.
+  # It is Base64 of 32 ASCII bytes, the full AES-256 length, so tests exercise
+  # the real GCM path. A shorter key would hit the weak zero-padding path that
+  # IdEncryptionServiceImpl rejects on startup (the M-11 fix).
   secret-key: MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=
 
 app:
