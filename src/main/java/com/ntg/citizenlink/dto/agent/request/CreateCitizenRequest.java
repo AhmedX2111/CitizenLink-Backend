@@ -1,10 +1,10 @@
 package com.ntg.citizenlink.dto.agent.request;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import com.ntg.citizenlink.constants.ValidationPatterns;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import com.ntg.citizenlink.constants.ValidationPatterns;
 import lombok.Data;
 
 @Data
@@ -22,7 +22,8 @@ public class CreateCitizenRequest {
     @Pattern(regexp = "^[0-9]{11}$", message = "Phone number must be 11 digits")
     private String phone;
 
-    @Pattern(regexp = "^$|^[A-Za-z0-9+_.-]+@(.+)$", message = "Invalid email format")
+    @Email(message = "Invalid email format")
+    @Size(max = 255, message = "Email must not exceed 255 characters")
     private String email;
 
     @Pattern(regexp = "^(en|ar)$", message = "Preferred language must be 'en' or 'ar'")
