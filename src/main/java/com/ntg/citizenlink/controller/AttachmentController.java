@@ -6,6 +6,7 @@ import com.ntg.citizenlink.service.interfaces.AttachmentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -14,7 +15,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
@@ -37,8 +37,9 @@ public class AttachmentController {
             @PathVariable UUID caseId,
             @RequestParam("file") MultipartFile file
     ) {
-        log.info("REST request: POST /api/v1/cases/{}/attachments - filename: {}, size: {} bytes",
-                caseId, file.getOriginalFilename(), file.getSize());
+        String filename = file.getOriginalFilename();
+        log.info("REST request: POST /api/v1/cases/{}/attachments - filenameLength: {}, size: {} bytes",
+                caseId, filename != null ? filename.length() : 0, file.getSize());
 
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         AttachmentResponse response = attachmentService.uploadAttachment(caseId, file, userId);
@@ -84,15 +85,13 @@ public class AttachmentController {
         Resource resource = attachmentService.downloadAttachment(caseId, attachmentId, userId);
 
         // Set headers for download
-        String encodedFileName = URLEncoder.encode(attachment.getOriginalFileName(), StandardCharsets.UTF_8)
-                .replaceAll("\\+", "%20");
-
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(attachment.getMimeType()));
         headers.setContentLength(attachment.getFileSizeBytes());
         headers.set(HttpHeaders.CONTENT_DISPOSITION,
-                "attachment; filename=\"" + attachment.getOriginalFileName() +
-                        "\"; filename*=UTF-8''" + encodedFileName);
+                ContentDisposition.attachment()
+                        .filename(attachment.getOriginalFileName(), StandardCharsets.UTF_8)
+                        .build().toString());
 
         log.info("REST response: GET /api/v1/cases/{}/attachments/{}/download - file downloaded", caseId, attachmentId);
 
