@@ -1,5 +1,7 @@
 package com.ntg.citizenlink.constants;
 
+import com.ntg.citizenlink.exception.BusinessRuleException;
+
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -20,29 +22,29 @@ public final class DateRangeValidator {
     }
 
     /**
-     * @throws IllegalArgumentException when {@code from} is after {@code to} or
-     *                                  the span exceeds {@link #MAX_RANGE_DAYS}
+     * @throws BusinessRuleException when {@code from} is after {@code to} or
+     *                               the span exceeds {@link #MAX_RANGE_DAYS}
      */
     public static void validate(LocalDate from, LocalDate to) {
         if (from.isAfter(to)) {
-            throw new IllegalArgumentException("Start date must not be after end date");
+            throw new BusinessRuleException("Start date must not be after end date");
         }
         if (ChronoUnit.DAYS.between(from, to) > MAX_RANGE_DAYS) {
-            throw new IllegalArgumentException(
+            throw new BusinessRuleException(
                     "Requested date range exceeds the maximum allowed span of " + MAX_RANGE_DAYS + " days");
         }
     }
 
     /**
-     * @throws IllegalArgumentException when {@code start} is after {@code end}
-     *                                  or the span exceeds {@link #MAX_RANGE_DAYS}
+     * @throws BusinessRuleException when {@code start} is after {@code end}
+     *                               or the span exceeds {@link #MAX_RANGE_DAYS}
      */
     public static void validate(OffsetDateTime start, OffsetDateTime end) {
         if (start.isAfter(end)) {
-            throw new IllegalArgumentException("Start date must not be after end date");
+            throw new BusinessRuleException("Start date must not be after end date");
         }
         if (ChronoUnit.DAYS.between(start, end) > MAX_RANGE_DAYS) {
-            throw new IllegalArgumentException(
+            throw new BusinessRuleException(
                     "Requested date range exceeds the maximum allowed span of " + MAX_RANGE_DAYS + " days");
         }
     }

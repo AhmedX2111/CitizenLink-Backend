@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.service;
 
 import com.ntg.citizenlink.config.FileStorageProperties;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -59,7 +60,7 @@ public class FileStorageService {
      * rejected because it contains no {@code word/document.xml} or
      * {@code [Content_Types].xml} referencing {@code wordprocessingml}.</p>
      *
-     * @throws IllegalArgumentException when the detected type is not allowed
+     * @throws BusinessRuleException when the detected type is not allowed
      */
     public String canonicalMimeType(String detectedMimeType, MultipartFile file) throws IOException {
         return canonicalMimeType(detectedMimeType,
@@ -92,7 +93,7 @@ public class FileStorageService {
                 return DOCX_MIME;
             }
         }
-        throw new IllegalArgumentException("File type not allowed: " + detectedMimeType);
+        throw new BusinessRuleException("File type not allowed: " + detectedMimeType);
     }
 
     /**
@@ -164,7 +165,7 @@ public class FileStorageService {
         // <uuid>.html or <uuid>.svg and nothing outside the allowed set is written.
         String extension = EXTENSION_BY_MIME.get(detectedMimeType);
         if (extension == null || !fileStorageProperties.isAllowedExtension(extension)) {
-            throw new IllegalArgumentException("File type not allowed: " + detectedMimeType);
+            throw new BusinessRuleException("File type not allowed: " + detectedMimeType);
         }
 
         // Create upload directory if it doesn't exist
@@ -201,12 +202,12 @@ public class FileStorageService {
      */
     private void validateFile(MultipartFile file) {
         if (file.isEmpty()) {
-            throw new IllegalArgumentException("File is empty");
+            throw new BusinessRuleException("File is empty");
         }
 
         long maxSize = fileStorageProperties.getMaxFileSize();
         if (file.getSize() > maxSize) {
-            throw new IllegalArgumentException(
+            throw new BusinessRuleException(
                     String.format("File size exceeds maximum allowed size of %d MB",
                             maxSize / (1024 * 1024))
             );

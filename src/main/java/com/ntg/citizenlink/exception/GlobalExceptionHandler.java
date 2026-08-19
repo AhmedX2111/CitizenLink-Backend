@@ -233,12 +233,28 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // -------------------------------------------------------------------------
-    // 400 Bad Request - General business rule violations
+    // 400 Bad Request - Intentional, user-facing business rule violations
+    // (L-11). Messages come from our own code specifically for the client, so
+    // they are safe to surface.
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity<ErrorResponse> handleBusinessRule(BusinessRuleException ex) {
+        log.warn("Business rule violation: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse("BAD_REQUEST", ex.getMessage(), null);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - Generic/defensive argument errors (L-11). The message
+    // of a raw IllegalArgumentException is NOT written for the client — it may
+    // embed internal values (stored file names, detected MIME types, runtime
+    // strings). Never echo it; surface a fixed opaque message and log only the
+    // exception type server-side.
     // -------------------------------------------------------------------------
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
-        log.warn("Bad request: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse("BAD_REQUEST", ex.getMessage(), null);
+        log.warn("Bad request rejected: {}", ex.getClass().getSimpleName());
+        ErrorResponse body = new ErrorResponse("BAD_REQUEST", "Invalid request", null);
         return ResponseEntity.badRequest().body(body);
     }
 
