@@ -152,21 +152,9 @@ public class CitizenServiceImpl implements CitizenService {
         // M-17: push the visibility rule into the queries instead of fetching
         // every case and filtering in memory. Same role->filter mapping as
         // CaseServiceImpl.searchCases.
-        UUID createdByFilter = null;
-        UUID assignedToFilter = null;
-
-        switch (requester.getRole()) {
-            case ADMIN:
-            case SUPERVISOR:
-                // both null — see all of the citizen's cases
-                break;
-            case HANDLER:
-                assignedToFilter = requesterId;
-                break;
-            default: // AGENT
-                createdByFilter = requesterId;
-                break;
-        }
+        VisibilityFilters filters = visibilityFilters(requester);
+        UUID createdByFilter = filters.createdByUserId;
+        UUID assignedToFilter = filters.assignedToUserId;
 
         Map<CaseStatus, Long> countsByStatus = caseRepository
                 .countVisibleByCitizenIdByStatus(id, createdByFilter, assignedToFilter)
@@ -216,15 +204,43 @@ public class CitizenServiceImpl implements CitizenService {
 
     @Override
     @Transactional(readOnly = true)
-    public CitizenResponse getCitizenById(UUID id) {
-        log.info("Fetching citizen by ID: {}", id);
+    public CitizenResponse getCitizenById(UUID id, UUID requesterId) {
+        log.info("Fetching citizen by ID: {} by user: {}", id, requesterId);
 
         Citizen citizen = citizenRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.of("Citizen", id));
 
-        long caseCount = caseRepository.countByCitizenId(id);
+        AppUser requester = appUserRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        // L-05: same access-filtered semantic as getCitizenProfile — the case
+        // count must reflect only the cases the requester is allowed to see,
+        // so the basic profile and the 360 profile never contradict each other.
+        VisibilityFilters filters = visibilityFilters(requester);
+        long caseCount = caseRepository.countVisibleByCitizenId(
+                id, filters.createdByUserId, filters.assignedToUserId);
 
         return toResponse(citizen, caseCount);
+    }
+
+    /**
+     * M-17 / L-05: maps a requester's role to the case-visibility filters that
+     * must be pushed into every citizen-related case query.
+     * <ul>
+     *   <li>ADMIN / SUPERVISOR - no filters, see all of a citizen's cases</li>
+     *   <li>HANDLER - only cases assigned to them</li>
+     *   <li>AGENT - only cases they created</li>
+     * </ul>
+     */
+    private VisibilityFilters visibilityFilters(AppUser requester) {
+        return switch (requester.getRole()) {
+            case ADMIN, SUPERVISOR -> new VisibilityFilters(null, null);
+            case HANDLER -> new VisibilityFilters(null, requester.getId());
+            default -> new VisibilityFilters(requester.getId(), null); // AGENT
+        };
+    }
+
+    private record VisibilityFilters(UUID createdByUserId, UUID assignedToUserId) {
     }
 
     @Override
