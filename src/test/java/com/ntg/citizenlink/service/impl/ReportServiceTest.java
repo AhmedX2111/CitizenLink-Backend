@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.service.impl;
 
 import com.ntg.citizenlink.dto.agent.response.VolumeReportResponse;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.repositories.ReportRepository;
 import com.ntg.citizenlink.service.ReportService;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,7 @@ class ReportServiceTest {
     void getVolumeReport_rejectsStartAfterEnd() {
         assertThatThrownBy(() -> reportService.getVolumeReport(
                 LocalDate.of(2026, 1, 2), LocalDate.of(2026, 1, 1)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Start date must not be after end date");
 
         verify(reportRepository, never()).countCreatedPerDay(any(), any());
@@ -55,7 +56,7 @@ class ReportServiceTest {
     void getVolumeReport_rejectsSpanBeyondMax() {
         assertThatThrownBy(() -> reportService.getVolumeReport(
                 LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 5)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("maximum allowed span");
 
         verify(reportRepository, never()).countCreatedPerDay(any(), any());

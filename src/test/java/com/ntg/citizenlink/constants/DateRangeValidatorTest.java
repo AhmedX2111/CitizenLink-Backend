@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.constants;
 
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -19,7 +20,7 @@ class DateRangeValidatorTest {
     void localDate_rejectsStartAfterEnd() {
         assertThatThrownBy(() -> DateRangeValidator.validate(
                 LocalDate.of(2026, 1, 2), LocalDate.of(2026, 1, 1)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Start date must not be after end date");
     }
 
@@ -27,7 +28,7 @@ class DateRangeValidatorTest {
     void localDate_rejectsSpanBeyondMax() {
         assertThatThrownBy(() -> DateRangeValidator.validate(
                 LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 5)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("maximum allowed span of 366 days");
     }
 
@@ -44,13 +45,13 @@ class DateRangeValidatorTest {
         OffsetDateTime from = OffsetDateTime.of(2026, 1, 2, 0, 0, 0, 0, ZoneOffset.UTC);
         OffsetDateTime to = OffsetDateTime.of(2026, 1, 1, 23, 59, 59, 0, ZoneOffset.UTC);
         assertThatThrownBy(() -> DateRangeValidator.validate(from, to))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Start date must not be after end date");
 
         OffsetDateTime start = OffsetDateTime.of(2024, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
         OffsetDateTime end = OffsetDateTime.of(2025, 1, 5, 0, 0, 0, 0, ZoneOffset.UTC);
         assertThatThrownBy(() -> DateRangeValidator.validate(start, end))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("maximum allowed span");
     }
 

@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.service;
 
 import com.ntg.citizenlink.config.FileStorageProperties;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,7 +59,7 @@ class FileStorageServiceTest {
                 "file", "x.bin", "application/octet-stream", new byte[]{1, 2, 3});
 
         assertThatThrownBy(() -> fileStorageService.storeFile(file, "application/octet-stream"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("File type not allowed");
         assertThat(Files.list(uploadRoot())).isEmpty();
     }
@@ -71,7 +72,7 @@ class FileStorageServiceTest {
                 "file", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
         assertThatThrownBy(() -> fileStorageService.storeFile(file, "image/jpeg"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("File type not allowed");
         assertThat(Files.list(uploadRoot())).isEmpty();
     }
@@ -135,7 +136,7 @@ class FileStorageServiceTest {
         // bypass the MIME whitelist (e.g. .xlsx, .pptx are not admitted).
         assertThatThrownBy(() -> docxStorageService()
                 .canonicalMimeType("application/x-tika-ooxml", "spreadsheet.xlsx"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("File type not allowed");
     }
 
@@ -143,7 +144,7 @@ class FileStorageServiceTest {
     void canonicalMimeType_unknownTypeWithoutExtension_rejected() {
         assertThatThrownBy(() -> docxStorageService()
                 .canonicalMimeType("application/zip", "archive.zip"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("File type not allowed");
     }
 
@@ -207,7 +208,7 @@ class FileStorageServiceTest {
                 "file", "archive.docx", "application/zip", content);
 
         assertThatThrownBy(() -> docxStorageService().canonicalMimeType("application/zip", file))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("File type not allowed");
         assertThat(Files.list(uploadRoot())).isEmpty();
     }

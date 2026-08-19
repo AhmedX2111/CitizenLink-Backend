@@ -5,6 +5,7 @@ import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.CaseType;
 import com.ntg.citizenlink.enums.Channel;
 import com.ntg.citizenlink.enums.Priority;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -125,7 +126,7 @@ class CsvExportServiceImplTest {
         OffsetDateTime end = OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
         assertThatThrownBy(() -> csv(start, end))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Start date must not be after end date");
         verify(caseRepository, never()).findCasesForReportBetween(any(), any(), any());
     }
@@ -136,7 +137,7 @@ class CsvExportServiceImplTest {
         OffsetDateTime end = OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
         assertThatThrownBy(() -> csv(start, end))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("maximum allowed span");
         verify(caseRepository, never()).findCasesForReportBetween(any(), any(), any());
     }

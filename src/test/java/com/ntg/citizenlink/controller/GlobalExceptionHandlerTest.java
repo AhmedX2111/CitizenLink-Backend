@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.controller;
 
 import com.ntg.citizenlink.config.TestSecurityConfig;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.exception.InvalidEncryptedIdException;
 import com.ntg.citizenlink.security.JwtBlocklist;
 import com.ntg.citizenlink.security.config.SecurityContextHelper;
@@ -151,10 +152,11 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void volumeReport_withExcessiveRange_returns400() throws Exception {
-        // M-16: an unbounded range is rejected with 400 BAD_REQUEST; the
-        // service raises IllegalArgumentException and the handler surfaces it.
+        // M-16/L-11: an unbounded range is rejected with 400 BAD_REQUEST. The
+        // date-range validator raises a BusinessRuleException whose message is
+        // intentional and client-facing, so the handler surfaces it verbatim.
         when(reportService.getVolumeReport(any(), any()))
-                .thenThrow(new IllegalArgumentException(
+                .thenThrow(new BusinessRuleException(
                         "Requested date range exceeds the maximum allowed span of 366 days"));
         mockMvc.perform(get("/api/v1/reports/volume")
                         .param("from", "0001-01-01")
@@ -163,5 +165,22 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.message")
                         .value("Requested date range exceeds the maximum allowed span of 366 days"));
+    }
+
+    @Test
+    void illegalArgumentException_returns400_withOpaqueMessage() throws Exception {
+        // L-11: a raw IllegalArgumentException's message is NOT written for the
+        // client (it may embed internal values such as stored file names or
+        // detected MIME types). The handler must surface a fixed opaque message
+        // and never echo the exception text.
+        when(reportService.getVolumeReport(any(), any()))
+                .thenThrow(new IllegalArgumentException("Sensitive internal detail"));
+        mockMvc.perform(get("/api/v1/reports/volume")
+                        .param("from", "2026-01-01")
+                        .param("to", "2026-01-10"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Invalid request"))
+                .andExpect(jsonPath("$.message").value(not(containsString("Sensitive"))));
     }
 }
