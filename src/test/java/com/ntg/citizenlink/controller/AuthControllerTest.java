@@ -121,6 +121,21 @@ class AuthControllerTest {
     }
 
     @Test
+    void login_returns400_whenCredentialsExceedMaxLength() throws Exception {
+        String longUsername = "u".repeat(101);
+        String longPassword = "p".repeat(129);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + longUsername
+                                + "\",\"password\":\"" + longPassword + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(authService, never()).login(any());
+    }
+
+    @Test
     void login_returns401_whenBadCredentials() throws Exception {
         when(authService.login(any()))
                 .thenThrow(new BadCredentialsException("Invalid username or password"));
