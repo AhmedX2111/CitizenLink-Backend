@@ -260,7 +260,6 @@ public class AttachmentServiceImpl implements AttachmentService {
                 .id(attachment.getId())
                 .caseId(attachment.getCaseEntity().getId())
                 .originalFileName(attachment.getOriginalFileName())
-                .storedFileName(attachment.getStoredFileName())
                 .mimeType(attachment.getMimeType())
                 .fileSizeBytes(attachment.getFileSizeBytes())
                 .fileSizeFormatted(fileStorageService.formatFileSize(attachment.getFileSizeBytes()))
