@@ -317,4 +317,54 @@ class CaseRepositoryTest {
         assertThat(result.get(0).caseNumber()).isEqualTo(moreUrgent.getCaseNumber());
         assertThat(result.get(1).caseNumber()).isEqualTo(lessUrgent.getCaseNumber());
     }
+
+    @Test
+    void keywordSearch_treatsPercentAsLiteral() {
+        Case literal = savedCase(citizenA, CaseStatus.NEW);
+        literal.setSubject("Discount 50% OFF");
+        caseRepository.save(literal);
+
+        Case wildcardDecoy = savedCase(citizenB, CaseStatus.NEW);
+        wildcardDecoy.setSubject("Discount 500 OFF");
+        caseRepository.save(wildcardDecoy);
+
+        List<String> result = searchByKeyword("50%");
+
+        assertThat(result).containsExactly(literal.getCaseNumber());
+    }
+
+    @Test
+    void keywordSearch_treatsUnderscoreAsLiteral() {
+        Case literal = savedCase(citizenA, CaseStatus.NEW);
+        literal.setSubject("report_2026");
+        caseRepository.save(literal);
+
+        Case wildcardDecoy = savedCase(citizenB, CaseStatus.NEW);
+        wildcardDecoy.setSubject("reportX2026");
+        caseRepository.save(wildcardDecoy);
+
+        List<String> result = searchByKeyword("report_");
+
+        assertThat(result).containsExactly(literal.getCaseNumber());
+    }
+
+    @Test
+    void keywordSearch_treatsBackslashAsLiteral() {
+        Case literal = savedCase(citizenA, CaseStatus.NEW);
+        literal.setSubject("path\\name");
+        caseRepository.save(literal);
+
+        List<String> result = searchByKeyword("path\\name");
+
+        assertThat(result).containsExactly(literal.getCaseNumber());
+    }
+
+    private List<String> searchByKeyword(String keyword) {
+        CaseSearchRequest req = new CaseSearchRequest();
+        req.setKeyword(keyword);
+        CaseSpecification spec = new CaseSpecification(req, null, null);
+        return caseRepository.findAll(spec, PageRequest.of(0, 20)).stream()
+                .map(Case::getCaseNumber)
+                .collect(toList());
+    }
 }
