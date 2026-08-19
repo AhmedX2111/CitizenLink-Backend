@@ -3,6 +3,7 @@ package com.ntg.citizenlink.service.impl;
 import com.ntg.citizenlink.exception.ResourceNotFoundException;
 import com.ntg.citizenlink.dto.agent.request.AddNoteRequest;
 import com.ntg.citizenlink.dto.agent.response.NoteResponse;
+import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.CaseNote;
@@ -72,14 +73,20 @@ public class CaseNoteServiceImpl implements CaseNoteService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable, UUID requesterId) {
+    public PagedResponse<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable, UUID requesterId) {
         log.debug("Fetching paginated notes for case: {}", caseId);
 
         requireAccessibleCase(caseId, requesterId);
 
         Page<CaseNote> notes = caseNoteRepository.findByCaseIdOrderByCreatedAtDesc(caseId, pageable);
 
-        return notes.map(this::toResponse);
+        Page<NoteResponse> mapped = notes.map(this::toResponse);
+        return new PagedResponse<>(
+                mapped.getContent(),
+                mapped.getNumber(),
+                mapped.getSize(),
+                mapped.getTotalElements(),
+                mapped.getTotalPages());
     }
 
     @Override

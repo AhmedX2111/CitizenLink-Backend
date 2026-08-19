@@ -2,7 +2,7 @@ package com.ntg.citizenlink.service.interfaces;
 
 import com.ntg.citizenlink.dto.agent.request.AddNoteRequest;
 import com.ntg.citizenlink.dto.agent.response.NoteResponse;
-import org.springframework.data.domain.Page;
+import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
@@ -23,7 +23,7 @@ public interface CaseNoteService {
     /**
      * Get paginated notes for a case
      */
-    Page<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable, UUID requesterId);
+    PagedResponse<NoteResponse> getNotesByCaseId(UUID caseId, Pageable pageable, UUID requesterId);
 
     /**
      * Get note by ID
