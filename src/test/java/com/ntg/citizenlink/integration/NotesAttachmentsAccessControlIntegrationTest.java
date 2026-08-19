@@ -395,6 +395,28 @@ class NotesAttachmentsAccessControlIntegrationTest {
     }
 
     @Test
+    void paginatedNotes_returnsPagedResponseEnvelope() throws Exception {
+        // L-10: the paginated notes endpoint must return the project's
+        // PagedResponse envelope (content/page/size/totalElements/totalPages/
+        // first/last), not Spring Data's Page shape.
+        String caseId = createCase(ownerToken);
+        String noteId = addNote(ownerToken, caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes/paginated", caseId)
+                        .param("page", "0")
+                        .param("size", "10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(noteId))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.first").value(true))
+                .andExpect(jsonPath("$.last").value(true));
+    }
+
+    @Test
     void noteId_fromOtherCase_withTamperedCaseId_returns404() throws Exception {
         String ownerCaseId = createCase(ownerToken);
         String noteId = addNote(ownerToken, ownerCaseId);
