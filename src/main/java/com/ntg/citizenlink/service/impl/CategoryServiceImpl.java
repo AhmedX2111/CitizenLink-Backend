@@ -62,7 +62,7 @@ public class CategoryServiceImpl implements CategoryService {
         category.setCode(code);
         category.setNameEn(request.getNameEn());
         category.setNameAr(request.getNameAr());
-        category.setActive(request.getActive() != null ? request.getActive() : true);
+        category.setActive(request.getActive());
 
         Category saved = categoryRepository.save(category);
         log.info("Category created: id={}, code={}", saved.getId(), saved.getCode());
