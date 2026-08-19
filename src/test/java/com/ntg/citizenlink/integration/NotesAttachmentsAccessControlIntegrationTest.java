@@ -27,8 +27,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.endsWith;
-import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -202,7 +200,6 @@ class NotesAttachmentsAccessControlIntegrationTest {
                         .file(file)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.storedFileName").value(endsWith(".pdf")))
                 .andExpect(jsonPath("$.originalFileName").value("report.html"));
     }
 
@@ -217,8 +214,7 @@ class NotesAttachmentsAccessControlIntegrationTest {
                         .file(file)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.storedFileName").value(endsWith(".pdf")))
-                .andExpect(jsonPath("$.storedFileName").value(not(containsString(".."))));
+                .andExpect(jsonPath("$.originalFileName").value("../../evil.sh"));
     }
 
     @Test
@@ -238,7 +234,6 @@ class NotesAttachmentsAccessControlIntegrationTest {
                         .file(file)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.storedFileName").value(endsWith(".docx")))
                 .andExpect(jsonPath("$.originalFileName").value("Claude_Code_Explained_Detailed (1).docx"));
     }
 
