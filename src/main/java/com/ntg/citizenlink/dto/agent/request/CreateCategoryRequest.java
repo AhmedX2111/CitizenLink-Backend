@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.dto.agent.request;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -17,5 +18,6 @@ public class CreateCategoryRequest {
     @Size(max = 200, message = "Arabic name must not exceed 200 characters")
     private String nameAr;
 
+    @NotNull(message = "Active flag is required")
     private Boolean active;
 }
