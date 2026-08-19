@@ -113,6 +113,25 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
             @Param("assignedToUserId") UUID assignedToUserId
     );
 
+    /**
+     * Counts a citizen's cases with the same requester-visibility restriction
+     * as countVisibleByCitizenIdByStatus (single scalar count instead of a
+     * grouped result). L-05: used by getCitizenById so the basic-profile case
+     * count matches the access-filtered totals shown in the 360 profile.
+     */
+    @Query("""
+        SELECT COUNT(c)
+        FROM Case c
+        WHERE c.citizen.id = :citizenId
+          AND (:createdByUserId IS NULL OR c.createdByUser.id = :createdByUserId)
+          AND (:assignedToUserId IS NULL OR c.assignedToUser.id = :assignedToUserId)
+        """)
+    long countVisibleByCitizenId(
+            @Param("citizenId") UUID citizenId,
+            @Param("createdByUserId") UUID createdByUserId,
+            @Param("assignedToUserId") UUID assignedToUserId
+    );
+
     // ── US-04: KPI counts ──────────────────────────────────────────────
     /**
      * Open cases = NEW, ASSIGNED, IN_PROGRESS (per confirmed business rule).

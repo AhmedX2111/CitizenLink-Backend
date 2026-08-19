@@ -93,7 +93,8 @@ public class CitizenController {
     public ResponseEntity<CitizenResponse> getCitizenById(@PathVariable UUID id) {
         log.info("GET /api/v1/citizens/{}", id);
 
-        CitizenResponse response = citizenService.getCitizenById(id);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        CitizenResponse response = citizenService.getCitizenById(id, userId);
 
         return ResponseEntity.ok(response);
     }

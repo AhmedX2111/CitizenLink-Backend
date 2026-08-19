@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.service.impl;
 
 import com.ntg.citizenlink.dto.agent.response.CitizenProfileResponse;
+import com.ntg.citizenlink.dto.agent.response.CitizenResponse;
 import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Citizen;
@@ -208,6 +209,74 @@ class CitizenServiceImplTest {
         when(appUserRepository.findById(requesterId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> citizenService.getCitizenProfile(citizenId, requesterId))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    /**
+     * L-05: getCitizenById must use the same access-filtered case count as
+     * getCitizenProfile so the two endpoints never show contradictory totals.
+     */
+    @Test
+    void getCitizenById_adminCountsAllVisibleCases() {
+        requester.setRole(UserRole.ADMIN);
+        stubLookups();
+        when(caseRepository.countVisibleByCitizenId(citizenId, null, null)).thenReturn(3L);
+
+        CitizenResponse response = citizenService.getCitizenById(citizenId, requesterId);
+
+        assertThat(response.getCaseCount()).isEqualTo(3);
+        verify(caseRepository).countVisibleByCitizenId(citizenId, null, null);
+    }
+
+    @Test
+    void getCitizenById_supervisorCountsAllVisibleCases() {
+        requester.setRole(UserRole.SUPERVISOR);
+        stubLookups();
+        when(caseRepository.countVisibleByCitizenId(citizenId, null, null)).thenReturn(2L);
+
+        CitizenResponse response = citizenService.getCitizenById(citizenId, requesterId);
+
+        assertThat(response.getCaseCount()).isEqualTo(2);
+    }
+
+    @Test
+    void getCitizenById_handlerRestrictsToAssignedCases() {
+        requester.setRole(UserRole.HANDLER);
+        stubLookups();
+        when(caseRepository.countVisibleByCitizenId(citizenId, null, requesterId)).thenReturn(1L);
+
+        CitizenResponse response = citizenService.getCitizenById(citizenId, requesterId);
+
+        assertThat(response.getCaseCount()).isEqualTo(1);
+        verify(caseRepository).countVisibleByCitizenId(citizenId, null, requesterId);
+    }
+
+    @Test
+    void getCitizenById_agentRestrictsToCreatedCases() {
+        requester.setRole(UserRole.AGENT);
+        stubLookups();
+        when(caseRepository.countVisibleByCitizenId(citizenId, requesterId, null)).thenReturn(0L);
+
+        CitizenResponse response = citizenService.getCitizenById(citizenId, requesterId);
+
+        assertThat(response.getCaseCount()).isZero();
+        verify(caseRepository).countVisibleByCitizenId(citizenId, requesterId, null);
+    }
+
+    @Test
+    void getCitizenById_throwsWhenCitizenNotFound() {
+        when(citizenRepository.findById(citizenId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> citizenService.getCitizenById(citizenId, requesterId))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void getCitizenById_throwsWhenRequesterNotFound() {
+        when(citizenRepository.findById(citizenId)).thenReturn(Optional.of(citizen));
+        when(appUserRepository.findById(requesterId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> citizenService.getCitizenById(citizenId, requesterId))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 }
