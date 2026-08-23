@@ -24,6 +24,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.nio.file.Path;
 import java.util.List;
@@ -55,7 +56,10 @@ public class AttachmentServiceImpl implements AttachmentService {
         try {
             // Detect actual MIME type from file content (magic bytes)
             Tika tika = new Tika();
-            String detectedMimeType = tika.detect(file.getInputStream());
+            String detectedMimeType;
+            try (InputStream fileStream = file.getInputStream()) {
+                detectedMimeType = tika.detect(fileStream);
+            }
 
             // M-13: resolve/canonicalize the detected type against the whitelist
             // (also handling Tika's generic application/x-tika-ooxml and
