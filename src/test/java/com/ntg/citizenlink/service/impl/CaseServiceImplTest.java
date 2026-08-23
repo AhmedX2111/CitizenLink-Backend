@@ -11,6 +11,7 @@ import com.ntg.citizenlink.entities.Department;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.enums.WorkflowAction;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.exception.IllegalTransitionException;
 import com.ntg.citizenlink.exception.ResourceNotFoundException;
 import com.ntg.citizenlink.repositories.AppUserRepository;
@@ -414,7 +415,7 @@ class CaseServiceImplTest {
             when(userRepository.findById(targetAgent.getId())).thenReturn(Optional.of(targetAgent));
 
             assertThatThrownBy(() -> caseService.createCase(requestWithAssignment(targetAgent.getId()), creatorId))
-                    .isInstanceOf(IllegalArgumentException.class)
+                    .isInstanceOf(BusinessRuleException.class)
                     .hasMessageContaining("HANDLER role");
         }
 
@@ -424,7 +425,7 @@ class CaseServiceImplTest {
             when(userRepository.findById(inactiveHandler.getId())).thenReturn(Optional.of(inactiveHandler));
 
             assertThatThrownBy(() -> caseService.createCase(requestWithAssignment(inactiveHandler.getId()), creatorId))
-                    .isInstanceOf(IllegalArgumentException.class)
+                    .isInstanceOf(BusinessRuleException.class)
                     .hasMessageContaining("inactive");
         }
     }

@@ -31,7 +31,7 @@ public interface CitizenService {
     /**
      * Get citizen by ID with case count.
      */
-    CitizenResponse getCitizenById(UUID id);
+    CitizenResponse getCitizenById(UUID id, UUID requesterId);
 
     /**
      * Check if citizen exists by national ID.

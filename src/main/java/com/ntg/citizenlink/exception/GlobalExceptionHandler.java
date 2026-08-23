@@ -28,6 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @RestControllerAdvice
@@ -137,7 +139,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> handleAuthenticationException(AuthenticationException ex) {
-        log.warn("Authentication failed: {}", ex.getMessage());
+        // M-15: authentication exception messages can carry account identifiers;
+        // log the exception class only.
+        log.warn("Authentication failed: {}", ex.getClass().getSimpleName());
         ErrorResponse body = new ErrorResponse("AUTHENTICATION_FAILED", "Invalid username or password", null);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
@@ -184,7 +188,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // -------------------------------------------------------------------------
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMessage());
+        // M-15: the raw message may embed the conflicting value — e.g.
+        // PostgreSQL "Key (national_id)=(...)" — a government identifier plus a
+        // schema disclosure. Log only the exception class and the constraint
+        // name, never the message.
+        Throwable root = ex.getMostSpecificCause();
+        log.warn("Data integrity violation - causedBy: {}, constraint: {}",
+                root != null ? root.getClass().getSimpleName() : ex.getClass().getSimpleName(),
+                extractConstraintName(root));
         ErrorResponse body = new ErrorResponse("DATA_INTEGRITY_VIOLATION", "A record with this value already exists.", null);
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
@@ -214,18 +225,47 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // -------------------------------------------------------------------------
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        log.warn("Invalid parameter type for {}: {}", ex.getName(), ex.getValue());
+        // M-15: never echo the raw client-supplied value into the log
+        // (log-injection / PII vector); log the parameter name only.
+        log.warn("Invalid parameter type for '{}'", ex.getName());
         ErrorResponse body = new ErrorResponse("BAD_REQUEST", "Invalid value for parameter: " + ex.getName(), null);
         return ResponseEntity.badRequest().body(body);
     }
 
     // -------------------------------------------------------------------------
-    // 400 Bad Request - General business rule violations
+    // 400 Bad Request - Intentional, user-facing business rule violations
+    // (L-11). Messages come from our own code specifically for the client, so
+    // they are safe to surface.
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity<ErrorResponse> handleBusinessRule(BusinessRuleException ex) {
+        log.warn("Business rule violation: {}", ex.getMessage());
+        ErrorResponse body = new ErrorResponse("BAD_REQUEST", ex.getMessage(), null);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - Generic/defensive argument errors (L-11). The message
+    // of a raw IllegalArgumentException is NOT written for the client — it may
+    // embed internal values (stored file names, detected MIME types, runtime
+    // strings). Never echo it; surface a fixed opaque message and log only the
+    // exception type server-side.
     // -------------------------------------------------------------------------
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
-        log.warn("Bad request: {}", ex.getMessage());
-        ErrorResponse body = new ErrorResponse("BAD_REQUEST", ex.getMessage(), null);
+        log.warn("Bad request rejected: {}", ex.getClass().getSimpleName());
+        ErrorResponse body = new ErrorResponse("BAD_REQUEST", "Invalid request", null);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - Malformed/corrupt encrypted ID (M-19). The ciphertext
+    // is attacker-controlled, so it is never logged and never echoed back.
+    // -------------------------------------------------------------------------
+    @ExceptionHandler(InvalidEncryptedIdException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidEncryptedId(InvalidEncryptedIdException ex) {
+        log.warn("Invalid encrypted ID rejected");
+        ErrorResponse body = new ErrorResponse("INVALID_ENCRYPTED_ID", ex.getMessage(), null);
         return ResponseEntity.badRequest().body(body);
     }
 
@@ -280,6 +320,28 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private String safeMessage(Exception ex) {
         String message = ex.getMessage();
         return message == null || message.isBlank() ? ex.getClass().getSimpleName() : message;
+    }
+
+    private static final Pattern CONSTRAINT_NAME_PATTERN =
+            Pattern.compile("constraint\\s+[\\[\"]?([\\w.]+)[\\]\"]?");
+
+    /**
+     * M-15: extract only the DB constraint name from an exception cause chain,
+     * discarding the conflicting value PostgreSQL/Hibernate may embed (e.g.
+     * {@code Key (national_id)=(...)}). Returns "unknown" when no constraint
+     * name can be found.
+     */
+    static String extractConstraintName(Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            String message = t.getMessage();
+            if (message != null) {
+                Matcher matcher = CONSTRAINT_NAME_PATTERN.matcher(message);
+                if (matcher.find()) {
+                    return matcher.group(1);
+                }
+            }
+        }
+        return "unknown";
     }
 
     private String errorCodeFor(int code) {

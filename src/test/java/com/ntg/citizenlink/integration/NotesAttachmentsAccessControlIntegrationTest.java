@@ -185,6 +185,77 @@ class NotesAttachmentsAccessControlIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
+    // Attachments - M-13 the stored extension must follow content, not filename
+    // -------------------------------------------------------------------------
+
+    @Test
+    void uploadWithMisleadingClientExtension_storesDetectedExtension() throws Exception {
+        // PDF content submitted under a .html name must be stored as <uuid>.pdf —
+        // the client-controlled extension is never used (M-13).
+        String caseId = createCase(ownerToken);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "report.html", MediaType.APPLICATION_PDF_VALUE, PDF_BYTES);
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.originalFileName").value("report.html"));
+    }
+
+    @Test
+    void uploadWithTraversalClientFilename_staysInsideUploadDir() throws Exception {
+        // A ../-bearing client filename must not influence the stored path (M-13).
+        String caseId = createCase(ownerToken);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "../../evil.sh", MediaType.APPLICATION_PDF_VALUE, PDF_BYTES);
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.originalFileName").value("../../evil.sh"));
+    }
+
+    @Test
+    void uploadDocxRegardlessOfTikaDetectionBucket_storedAsDocx() throws Exception {
+        // A valid .docx (a real OOXML zip) must be accepted and stored as
+        // <uuid>.docx. Tika may report it as the specific wordprocessingml type,
+        // as application/x-tika-ooxml, or as application/zip — all three must
+        // canonicalize to the docx content type (M-13).
+        String caseId = createCase(ownerToken);
+        byte[] docxBytes = docxLikeZip();
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "Claude_Code_Explained_Detailed (1).docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                docxBytes);
+
+        mockMvc.perform(multipart("/api/v1/cases/{caseId}/attachments", caseId)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.originalFileName").value("Claude_Code_Explained_Detailed (1).docx"));
+    }
+
+    private static byte[] docxLikeZip() throws Exception {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(out)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("[Content_Types].xml"));
+            zip.write(("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                    + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                    + "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                    + "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+                    + "</Types>").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new java.util.zip.ZipEntry("word/document.xml"));
+            zip.write("<?xml version=\"1.0\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p/></w:body></w:document>"
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        return out.toByteArray();
+    }
+
+    // -------------------------------------------------------------------------
     // Notes - access control
     // -------------------------------------------------------------------------
 
@@ -279,12 +350,12 @@ class NotesAttachmentsAccessControlIntegrationTest {
     }
 
     @Test
-    void unauthenticated_cannotDeleteNote_returnsForbidden() throws Exception {
+    void unauthenticated_cannotDeleteNote_returnsUnauthorized() throws Exception {
         String caseId = createCase(ownerToken);
         String noteId = addNote(ownerToken, caseId);
 
         mockMvc.perform(delete("/api/v1/cases/{caseId}/notes/{noteId}", caseId, noteId))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -321,6 +392,28 @@ class NotesAttachmentsAccessControlIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/{caseId}/notes/{noteId}", caseId, missingId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void paginatedNotes_returnsPagedResponseEnvelope() throws Exception {
+        // L-10: the paginated notes endpoint must return the project's
+        // PagedResponse envelope (content/page/size/totalElements/totalPages/
+        // first/last), not Spring Data's Page shape.
+        String caseId = createCase(ownerToken);
+        String noteId = addNote(ownerToken, caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes/paginated", caseId)
+                        .param("page", "0")
+                        .param("size", "10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(noteId))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.first").value(true))
+                .andExpect(jsonPath("$.last").value(true));
     }
 
     @Test

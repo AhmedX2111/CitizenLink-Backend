@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service.impl;
 
+import com.ntg.citizenlink.exception.InvalidEncryptedIdException;
 import com.ntg.citizenlink.service.interfaces.IdEncryptionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,7 +74,10 @@ public class IdEncryptionServiceImpl implements IdEncryptionService {
             return Base64.getUrlEncoder().withoutPadding().encodeToString(combined);
 
         } catch (Exception e) {
-            log.error("Failed to encrypt ID: {}", id, e);
+            // M-19: this path only ever handles server-owned UUIDs (AuthServiceImpl),
+            // so an ERROR with a stack trace is appropriate for diagnostics — but the
+            // plaintext UUID this service exists to hide is never written to the log.
+            log.error("Failed to encrypt ID", e);
             throw new RuntimeException("Failed to encrypt ID", e);
         }
     }
@@ -88,7 +92,7 @@ public class IdEncryptionServiceImpl implements IdEncryptionService {
             byte[] combined = Base64.getUrlDecoder().decode(encryptedId);
 
             if (combined.length < GCM_IV_LENGTH) {
-                throw new IllegalArgumentException("Invalid encrypted ID format");
+                throw new InvalidEncryptedIdException("Invalid encrypted ID format");
             }
 
             byte[] iv = new byte[GCM_IV_LENGTH];
@@ -105,9 +109,15 @@ public class IdEncryptionServiceImpl implements IdEncryptionService {
 
             return UUID.fromString(idString);
 
+        } catch (InvalidEncryptedIdException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Failed to decrypt ID: {}", encryptedId, e);
-            throw new RuntimeException("Failed to decrypt ID. Invalid or corrupted data.", e);
+            // M-19: the input is attacker-controlled (it arrives straight from a
+            // request path). Log at WARN without the throwable and log only the
+            // length — never the ciphertext — so garbage input cannot flood the
+            // log files or inject log content. Throws a typed 400 exception.
+            log.warn("Failed to decrypt ID (input length: {})", encryptedId.length());
+            throw new InvalidEncryptedIdException("Invalid or corrupted encrypted ID.");
         }
     }
 
@@ -130,7 +140,10 @@ public class IdEncryptionServiceImpl implements IdEncryptionService {
         try {
             return decryptId(encryptedId);
         } catch (Exception e) {
-            log.warn("Failed to safely decrypt ID: {}", encryptedId);
+            // M-19: routine control flow (returns null so callers treat the id as
+            // absent), so DEBUG and no throwable — and never the ciphertext.
+            log.debug("Failed to safely decrypt ID (input length: {})",
+                    encryptedId == null ? -1 : encryptedId.length());
             return null;
         }
     }

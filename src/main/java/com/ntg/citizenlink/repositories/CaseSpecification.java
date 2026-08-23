@@ -21,6 +21,8 @@ import java.util.UUID;
  */
 public class CaseSpecification implements Specification<Case> {
 
+    private static final char LIKE_ESCAPE_CHAR = '\\';
+
     private final CaseSearchRequest filter;
 
     /**
@@ -39,6 +41,19 @@ public class CaseSpecification implements Specification<Case> {
         this.filter = filter;
         this.createdByUserId = createdByUserId;
         this.assignedToUserId = assignedToUserId;
+    }
+
+    /**
+     * Escapes LIKE wildcards (% and _) and the escape character itself so the
+     * keyword is matched literally. Without this, a keyword containing % or _
+     * acts as a wildcard and produces unexpected matches and needlessly broad
+     * scans. No injection risk either way (the value stays a bound parameter).
+     */
+    private static String escapeLikeWildcards(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 
     @Override
@@ -85,11 +100,11 @@ public class CaseSpecification implements Specification<Case> {
         }
 
         if (filter.getKeyword() != null && !filter.getKeyword().isBlank()) {
-            String pattern = "%" + filter.getKeyword().trim().toLowerCase() + "%";
+            String pattern = "%" + escapeLikeWildcards(filter.getKeyword().trim().toLowerCase()) + "%";
             Predicate byCaseNumber = cb.like(
-                    cb.lower(root.get("caseNumber")), pattern);
+                    cb.lower(root.get("caseNumber")), pattern, LIKE_ESCAPE_CHAR);
             Predicate bySubject = cb.like(
-                    cb.lower(root.get("subject")), pattern);
+                    cb.lower(root.get("subject")), pattern, LIKE_ESCAPE_CHAR);
             predicates.add(cb.or(byCaseNumber, bySubject));
         }
 

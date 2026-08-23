@@ -19,6 +19,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -59,19 +61,14 @@ public class AttachmentServiceImpl implements AttachmentService {
                 detectedMimeType = tika.detect(fileStream);
             }
 
-            List<String> allowedTypes = List.of(
-                    "application/pdf",
-                    "image/png",
-                    "image/jpeg",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            );
+            // M-13: resolve/canonicalize the detected type against the whitelist
+            // (also handling Tika's generic application/x-tika-ooxml and
+            // application/zip detections of valid .docx files).
+            String mimeType = fileStorageService.canonicalMimeType(detectedMimeType, file);
 
-            if (!allowedTypes.contains(detectedMimeType)) {
-                throw new IllegalArgumentException("File type not allowed: " + detectedMimeType);
-            }
-
-            // Store file on disk
-            String storedFileName = fileStorageService.storeFile(file);
+            // Store file on disk (extension derived from the canonical MIME type,
+            // never from the client-controlled original filename — M-13)
+            String storedFileName = fileStorageService.storeFile(file, mimeType);
             String originalFileName = file.getOriginalFilename();
             long fileSize = file.getSize();
 
@@ -80,12 +77,35 @@ public class AttachmentServiceImpl implements AttachmentService {
             attachment.setCaseEntity(caseEntity);
             attachment.setOriginalFileName(originalFileName);
             attachment.setStoredFileName(storedFileName);
-            attachment.setMimeType(detectedMimeType);
+            attachment.setMimeType(mimeType);
             attachment.setFileSizeBytes(fileSize);
             attachment.setStoragePath(fileStorageProperties.getUploadDir() + "/" + storedFileName);
             attachment.setUploadedByUser(uploadedBy);
 
             Attachment savedAttachment = attachmentRepository.save(attachment);
+
+            // M-14: the file lands on disk inside the transaction, but the DB row
+            // is only durable at commit. If the transaction rolls back (commit
+            // failure, or any exception after the copy), remove the file so it is
+            // not orphaned with no row to point at it.
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCompletion(int status) {
+                                if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                                    try {
+                                        fileStorageService.deleteFile(storedFileName);
+                                        log.info("Cleaned up stored file after rollback: {}", storedFileName);
+                                    } catch (IOException e) {
+                                        log.error("Failed to clean up stored file after rollback: {}", storedFileName, e);
+                                    }
+                                }
+                            }
+                        });
+            } else {
+                log.warn("No active transaction for upload; cannot register rollback cleanup for {}", storedFileName);
+            }
 
             log.info("Attachment uploaded successfully: {} (ID: {})", originalFileName, savedAttachment.getId());
 
@@ -184,19 +204,37 @@ public class AttachmentServiceImpl implements AttachmentService {
             }
         }
 
-        try {
-            // Delete file from disk
-            fileStorageService.deleteFile(attachment.getStoredFileName());
+        String storedFileName = attachment.getStoredFileName();
 
-            // Delete record from database
-            attachmentRepository.deleteById(attachmentId);
+        // M-14: reverse the previous order (which deleted the file before the
+        // row). The DB delete happens inside the transaction and the disk
+        // delete is deferred until the commit succeeds — so a rollback leaves
+        // the file intact instead of a row whose storedFileName no longer
+        // exists on disk (every later download would 500).
+        attachmentRepository.deleteById(attachmentId);
 
-            log.info("Attachment deleted successfully: {}", attachmentId);
-
-        } catch (IOException e) {
-            log.error("Failed to delete attachment: {}", attachmentId, e);
-            throw new RuntimeException("Failed to delete attachment", e);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                fileStorageService.deleteFile(storedFileName);
+                                log.info("Removed file after committed delete: {}", storedFileName);
+                            } catch (IOException e) {
+                                log.error("Failed to delete file after commit (orphaned): {}", storedFileName, e);
+                            }
+                        }
+                    });
+        } else {
+            try {
+                fileStorageService.deleteFile(storedFileName);
+            } catch (IOException e) {
+                log.error("Failed to delete file (no active transaction): {}", storedFileName, e);
+            }
         }
+
+        log.info("Attachment deleted successfully: {}", attachmentId);
     }
 
     @Override
@@ -226,7 +264,6 @@ public class AttachmentServiceImpl implements AttachmentService {
                 .id(attachment.getId())
                 .caseId(attachment.getCaseEntity().getId())
                 .originalFileName(attachment.getOriginalFileName())
-                .storedFileName(attachment.getStoredFileName())
                 .mimeType(attachment.getMimeType())
                 .fileSizeBytes(attachment.getFileSizeBytes())
                 .fileSizeFormatted(fileStorageService.formatFileSize(attachment.getFileSizeBytes()))

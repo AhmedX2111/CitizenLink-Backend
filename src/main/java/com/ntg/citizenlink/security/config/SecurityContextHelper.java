@@ -4,6 +4,7 @@ import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.repositories.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -25,6 +26,12 @@ public class SecurityContextHelper {
 
     private final AppUserRepository appUserRepository;
 
+    private boolean isAuthenticatedUser(Authentication authentication) {
+        return authentication != null
+                && authentication.isAuthenticated()
+                && !(authentication instanceof AnonymousAuthenticationToken);
+    }
+
     /**
      * Returns the full AppUser entity for the currently authenticated principal.
      * Throws UsernameNotFoundException (-> 401) if the principal is not found.
@@ -32,7 +39,7 @@ public class SecurityContextHelper {
     public AppUser getAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        if (authentication == null || !authentication.isAuthenticated()) {
+        if (!isAuthenticatedUser(authentication)) {
             log.error("No authenticated user found in SecurityContext");
             throw new UsernameNotFoundException("No authenticated user found");
         }
@@ -61,7 +68,7 @@ public class SecurityContextHelper {
      */
     public String getAuthenticatedUsername() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
+        if (!isAuthenticatedUser(authentication)) {
             return null;
         }
         return authentication.getName();
@@ -72,7 +79,7 @@ public class SecurityContextHelper {
      */
     public boolean hasRole(String role) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null) {
+        if (!isAuthenticatedUser(authentication)) {
             return false;
         }
         return authentication.getAuthorities().stream()

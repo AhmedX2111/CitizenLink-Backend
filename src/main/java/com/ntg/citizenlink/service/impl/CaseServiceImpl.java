@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service.impl;
 
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.exception.IllegalTransitionException;
 import com.ntg.citizenlink.exception.ResourceNotFoundException;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
@@ -66,14 +67,14 @@ public class CaseServiceImpl implements CaseService {
                 .orElseThrow(() -> ResourceNotFoundException.of("Category", request.getCategoryId()));
 
         if (!category.getActive()) {
-            throw new IllegalArgumentException("Category is not active and cannot be assigned to a case");
+            throw new BusinessRuleException("Category is not active and cannot be assigned to a case");
         }
 
         Department department = departmentRepository.findById(request.getDepartmentId())
                 .orElseThrow(() -> ResourceNotFoundException.of("Department", request.getDepartmentId()));
 
         if (!department.getActive()) {
-            throw new IllegalArgumentException("Department is not active and cannot be assigned to a case");
+            throw new BusinessRuleException("Department is not active and cannot be assigned to a case");
         }
 
         // Assignment at creation is a privileged operation. Only SUPERVISOR/ADMIN
@@ -87,10 +88,10 @@ public class CaseServiceImpl implements CaseService {
                 assignedTo = userRepository.findById(request.getAssignedToUserId())
                         .orElseThrow(() -> ResourceNotFoundException.of("AppUser (assignedTo)", request.getAssignedToUserId()));
                 if (!assignedTo.getActive()) {
-                    throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+                    throw new BusinessRuleException("Cannot assign case to an inactive user account");
                 }
                 if (assignedTo.getRole() != UserRole.HANDLER) {
-                    throw new IllegalArgumentException("Can only assign a case to a user with HANDLER role");
+                    throw new BusinessRuleException("Can only assign a case to a user with HANDLER role");
                 }
             } else {
                 log.warn("Ignoring assignedToUserId on case create: role {} is not allowed to assign", creatorRole);
@@ -299,7 +300,7 @@ public class CaseServiceImpl implements CaseService {
             AppUser handler = userRepository.findById(request.getAssignedToUserId())
                     .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
             if (!handler.getActive()) {
-                throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+                throw new BusinessRuleException("Cannot assign case to an inactive user account");
             }
             if (handler.getRole() != UserRole.HANDLER) {
                 throw new IllegalTransitionException("INVALID_ASSIGNMENT", "Can only assign to a user with HANDLER role");
@@ -315,7 +316,7 @@ public class CaseServiceImpl implements CaseService {
             AppUser newHandler = userRepository.findById(request.getAssignedToUserId())
                     .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
             if (!newHandler.getActive()) {
-                throw new IllegalArgumentException("Cannot assign case to an inactive user account");
+                throw new BusinessRuleException("Cannot assign case to an inactive user account");
             }
             if (newHandler.getRole() != UserRole.HANDLER) {
                 throw new IllegalTransitionException("INVALID_REASSIGNMENT", "Can only reassign to a user with HANDLER role");

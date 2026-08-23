@@ -180,6 +180,6 @@ assertThat(cookie).isNotNull();
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/auth/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

@@ -62,7 +62,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         department.setCode(code);
         department.setNameEn(request.getNameEn());
         department.setNameAr(request.getNameAr());
-        department.setActive(request.getActive() != null ? request.getActive() : true);
+        department.setActive(request.getActive());
 
         Department saved = departmentRepository.save(department);
         log.info("Department created: id={}, code={}", saved.getId(), saved.getCode());

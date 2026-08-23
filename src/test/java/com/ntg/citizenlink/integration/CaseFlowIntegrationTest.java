@@ -334,10 +334,10 @@ class CaseFlowIntegrationTest {
     }
 
     @Test
-    void unauthenticatedCreate_returns403() throws Exception {
+    void unauthenticatedCreate_returns401() throws Exception {
         mockMvc.perform(post("/api/v1/cases")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createBody()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

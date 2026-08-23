@@ -2,6 +2,7 @@ package com.ntg.citizenlink.controller;
 
 import com.ntg.citizenlink.dto.agent.request.AddNoteRequest;
 import com.ntg.citizenlink.dto.agent.response.NoteResponse;
+import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.security.config.SecurityContextHelper;
 import com.ntg.citizenlink.service.interfaces.CaseNoteService;
 import jakarta.validation.Valid;
@@ -9,7 +10,6 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -70,7 +70,7 @@ public class CaseNoteController {
      */
     @GetMapping("/paginated")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
-    public ResponseEntity<Page<NoteResponse>> getNotesByCaseIdPaginated(
+    public ResponseEntity<PagedResponse<NoteResponse>> getNotesByCaseIdPaginated(
             @PathVariable UUID caseId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size
@@ -79,7 +79,7 @@ public class CaseNoteController {
 
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<NoteResponse> responses = caseNoteService.getNotesByCaseId(caseId, pageable, userId);
+        PagedResponse<NoteResponse> responses = caseNoteService.getNotesByCaseId(caseId, pageable, userId);
 
         log.info("REST response: GET /api/v1/cases/{}/notes/paginated - total: {}", caseId, responses.getTotalElements());
         return ResponseEntity.ok(responses);

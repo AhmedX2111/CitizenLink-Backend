@@ -7,6 +7,7 @@ import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.enums.WorkflowAction;
 import com.ntg.citizenlink.support.EntityFactory;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,5 +84,17 @@ class StatusHistoryRepositoryTest {
     @Test
     void findByCaseIdOrderByCreatedAtAsc_returnsEmpty_whenNoHistory() {
         assertThat(historyRepository.findByCaseIdOrderByCreatedAtAsc(savedCase.getId())).isEmpty();
+    }
+
+    @Test
+    void findByCaseIdOrderByCreatedAtAsc_initializesChangedByUser() {
+        historyRepository.save(EntityFactory.statusHistory(
+                savedCase, user, null, CaseStatus.NEW, WorkflowAction.CREATE));
+
+        List<StatusHistory> result =
+                historyRepository.findByCaseIdOrderByCreatedAtAsc(savedCase.getId());
+
+        assertThat(result).hasSize(1);
+        assertThat(Hibernate.isInitialized(result.get(0).getChangedByUser())).isTrue();
     }
 }

@@ -12,7 +12,6 @@ public class AttachmentResponse {
     private UUID id;
     private UUID caseId;
     private String originalFileName;
-    private String storedFileName;
     private String mimeType;
     private Long fileSizeBytes;
     private String fileSizeFormatted;

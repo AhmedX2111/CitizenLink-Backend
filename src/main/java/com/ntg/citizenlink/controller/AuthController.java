@@ -6,6 +6,7 @@ import com.ntg.citizenlink.security.JwtBlocklist;
 import com.ntg.citizenlink.security.config.JwtProperties;
 import com.ntg.citizenlink.service.interfaces.AuthService;
 import com.ntg.citizenlink.service.interfaces.JwtService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.Date;
@@ -45,6 +46,7 @@ public class AuthController {
     private final JwtProperties jwtProperties;
 
     @PostMapping("/login")
+    @SecurityRequirements
     public ResponseEntity<EncryptedAuthResponse> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest servletRequest) {
@@ -75,6 +77,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
+    @SecurityRequirements
     public ResponseEntity<EncryptedAuthResponse> refresh(
             @CookieValue(name = "refresh_token", required = false) String refreshToken,
             HttpServletRequest servletRequest) {

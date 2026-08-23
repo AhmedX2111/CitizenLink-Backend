@@ -3,6 +3,7 @@ package com.ntg.citizenlink.service;
 import com.ntg.citizenlink.dto.agent.request.UpdateUserRequest;
 import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.enums.UserRole;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.repositories.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,7 +69,7 @@ class UserAdminServiceTest {
     @Test
     void deactivateUser_ownId_isRejected() {
         assertThatThrownBy(() -> userAdminService.deactivateUser(id, id))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("own account");
         verify(userRepository, never()).save(any());
     }
@@ -80,7 +81,7 @@ class UserAdminServiceTest {
         when(userRepository.countByRoleAndActive(UserRole.ADMIN, true)).thenReturn(1L);
 
         assertThatThrownBy(() -> userAdminService.deactivateUser(id, callerId))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("last active ADMIN");
         verify(userRepository, never()).save(any());
     }
@@ -119,7 +120,7 @@ class UserAdminServiceTest {
         request.setRole(UserRole.SUPERVISOR);
 
         assertThatThrownBy(() -> userAdminService.updateUser(id, request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("last active ADMIN");
         verify(userRepository, never()).save(any());
     }

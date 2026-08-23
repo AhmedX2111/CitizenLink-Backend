@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service;
 
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.exception.DuplicateResourceException;
 import com.ntg.citizenlink.exception.ResourceNotFoundException;
 import com.ntg.citizenlink.dto.agent.request.CreateUserRequest;
@@ -112,7 +113,7 @@ public class UserAdminService {
                 && user.getRole() == UserRole.ADMIN
                 && request.getRole() != UserRole.ADMIN
                 && userRepository.countByRoleAndActive(UserRole.ADMIN, true) <= 1) {
-            throw new IllegalArgumentException("Cannot demote the last active ADMIN account");
+            throw new BusinessRuleException("Cannot demote the last active ADMIN account");
         }
 
         user.setDisplayName(request.getDisplayName());
@@ -132,7 +133,7 @@ public class UserAdminService {
         log.info("Admin {} deactivating user: id={}", callerId, id);
 
         if (id.equals(callerId)) {
-            throw new IllegalArgumentException("You cannot deactivate your own account");
+            throw new BusinessRuleException("You cannot deactivate your own account");
         }
 
         AppUser user = userRepository.findById(id)
@@ -144,7 +145,7 @@ public class UserAdminService {
         if (Boolean.TRUE.equals(user.getActive())
                 && user.getRole() == UserRole.ADMIN
                 && userRepository.countByRoleAndActive(UserRole.ADMIN, true) <= 1) {
-            throw new IllegalArgumentException("Cannot deactivate the last active ADMIN account");
+            throw new BusinessRuleException("Cannot deactivate the last active ADMIN account");
         }
 
         user.setActive(false);
