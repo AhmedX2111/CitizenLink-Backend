@@ -9,6 +9,7 @@ import com.ntg.citizenlink.entities.Category;
 import com.ntg.citizenlink.entities.Citizen;
 import com.ntg.citizenlink.entities.Department;
 import com.ntg.citizenlink.enums.UserRole;
+import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.repositories.AttachmentRepository;
 import com.ntg.citizenlink.repositories.CaseRepository;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -28,6 +30,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,7 +71,8 @@ class AttachmentServiceImplTest {
         when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
         when(appUserRepository.findById(userId)).thenReturn(Optional.of(uploader));
         when(caseAccessPolicy.canView(any(), any())).thenReturn(true);
-        when(fileStorageService.storeFile(any())).thenReturn("stored-uuid.pdf");
+        when(fileStorageService.canonicalMimeType(any(String.class), any(MultipartFile.class))).thenReturn("application/pdf");
+        when(fileStorageService.storeFile(any(), any())).thenReturn("stored-uuid.pdf");
         when(attachmentRepository.save(any())).thenAnswer(invocation -> {
             Attachment saved = invocation.getArgument(0);
             saved.setId(UUID.randomUUID());
@@ -102,10 +106,12 @@ class AttachmentServiceImplTest {
         when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
         when(appUserRepository.findById(userId)).thenReturn(Optional.of(uploader));
         when(caseAccessPolicy.canView(any(), any())).thenReturn(true);
+        when(fileStorageService.canonicalMimeType(any(String.class), any(MultipartFile.class)))
+                .thenThrow(new BusinessRuleException("File type not allowed: application/octet-stream"));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> service.uploadAttachment(caseId, file, userId))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("File type not allowed");
 
         assertThat(file.isClosed()).isTrue();

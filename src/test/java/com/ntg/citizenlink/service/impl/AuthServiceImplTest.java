@@ -231,7 +231,7 @@ class AuthServiceImplTest {
             when(appUserRepository.findByUsername(USERNAME)).thenReturn(Optional.of(user));
 
             assertThatThrownBy(() -> authService.refreshToken(REFRESH_TOKEN))
-                    .isInstanceOf(BadCredentialsException.class)
+                    .isInstanceOf(DisabledException.class)
                     .hasMessage("Account is disabled");
 
             verify(appUserRepository).save(user);

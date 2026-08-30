@@ -8,8 +8,12 @@ import com.ntg.citizenlink.service.interfaces.AuthService;
 import com.ntg.citizenlink.service.interfaces.JwtService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.Date;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +21,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -44,6 +49,8 @@ public class AuthController {
     private final JwtService jwtService;
     private final JwtBlocklist jwtBlocklist;
     private final JwtProperties jwtProperties;
+
+    private final Map<String, AtomicBoolean> refreshInProgress = new ConcurrentHashMap<>();
 
     @PostMapping("/login")
     @SecurityRequirements
@@ -80,36 +87,88 @@ public class AuthController {
     @SecurityRequirements
     public ResponseEntity<EncryptedAuthResponse> refresh(
             @CookieValue(name = "refresh_token", required = false) String refreshToken,
-            HttpServletRequest servletRequest) {
+            HttpServletRequest servletRequest,
+            HttpServletResponse response) {
         log.info("REST request: POST /api/v1/auth/refresh");
 
         if (refreshToken == null || refreshToken.isBlank()) {
             log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - missing refresh token cookie");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
+                    .build();
         }
 
-        long startTime = System.currentTimeMillis();
-        EncryptedAuthResponse response = authService.refreshToken(refreshToken);
-        long duration = System.currentTimeMillis() - startTime;
+        String username;
+        try {
+            username = jwtService.extractUsername(refreshToken);
+        } catch (Exception e) {
+            log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - invalid token format");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
+                    .build();
+        }
 
-        log.info("REST response: POST /api/v1/auth/refresh - status: 200 OK, duration: {}ms", duration);
+        if (username == null || username.isBlank()) {
+            log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - invalid token format");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
+                    .build();
+        }
 
-        ResponseCookie newRefreshCookie = ResponseCookie.from("refresh_token", response.refreshToken())
+        // Prevent concurrent refresh requests for the same user
+        AtomicBoolean inProgress = refreshInProgress.computeIfAbsent(username, k -> new AtomicBoolean(false));
+        if (!inProgress.compareAndSet(false, true)) {
+            log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - refresh already in progress for user: {}", username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
+                    .build();
+        }
+
+        try {
+            long startTime = System.currentTimeMillis();
+            EncryptedAuthResponse authResponse = authService.refreshToken(refreshToken);
+            long duration = System.currentTimeMillis() - startTime;
+
+            log.info("REST response: POST /api/v1/auth/refresh - status: 200 OK, duration: {}ms", duration);
+
+            ResponseCookie newRefreshCookie = ResponseCookie.from("refresh_token", authResponse.refreshToken())
+                    .httpOnly(true)
+                    .secure(jwtProperties.refreshCookieSecure() || servletRequest.isSecure())
+                    .sameSite("Strict")
+                    .path("/api/v1/auth")
+                    .maxAge(jwtProperties.refreshExpirationMs() / 1000)
+                    .build();
+
+            EncryptedAuthResponse body = new EncryptedAuthResponse(
+                    authResponse.token(), null, authResponse.encryptedId(),
+                    authResponse.username(), authResponse.displayName(),
+                    authResponse.email(), authResponse.role());
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.SET_COOKIE, newRefreshCookie.toString())
+                    .body(body);
+        } catch (AuthenticationException e) {
+            // US-45: re-throw so the @ControllerAdvice (GlobalExceptionHandler)
+            // produces the standard 401 error envelope (ACCOUNT_DISABLED for
+            // inactive users, BAD_CREDENTIALS otherwise) instead of an empty body.
+            log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - {}", e.getMessage());
+            response.addHeader(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString());
+            throw e;
+        } finally {
+            // Release the lock
+            inProgress.set(false);
+            refreshInProgress.remove(username, inProgress);
+        }
+    }
+
+    private ResponseCookie clearRefreshCookie(HttpServletRequest servletRequest) {
+        return ResponseCookie.from("refresh_token", "")
                 .httpOnly(true)
                 .secure(jwtProperties.refreshCookieSecure() || servletRequest.isSecure())
                 .sameSite("Strict")
                 .path("/api/v1/auth")
-                .maxAge(jwtProperties.refreshExpirationMs() / 1000)
+                .maxAge(0)
                 .build();
-
-        EncryptedAuthResponse body = new EncryptedAuthResponse(
-                response.token(), null, response.encryptedId(),
-                response.username(), response.displayName(),
-                response.email(), response.role());
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, newRefreshCookie.toString())
-                .body(body);
     }
 
     @PostMapping("/logout")

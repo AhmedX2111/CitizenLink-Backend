@@ -105,7 +105,7 @@ public class AuthServiceImpl implements AuthService {
             log.warn("AUTH EVENT: REFRESH_FAILURE | username={} | reason=Account is disabled", username);
             user.setRefreshTokenJti(null);
             appUserRepository.save(user);
-            throw new BadCredentialsException("Account is disabled");
+            throw new DisabledException("Account is disabled");
         }
 
         if (user.getRefreshTokenJti() == null || !user.getRefreshTokenJti().equals(jti)) {
