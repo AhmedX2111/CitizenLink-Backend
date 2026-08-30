@@ -155,6 +155,7 @@ class AuthControllerTest {
     void refresh_returns200_withNewAccessTokenAndRotatedCookie() throws Exception {
         when(authService.refreshToken(REFRESH))
                 .thenReturn(authResponse("new-access", "new-refresh"));
+        when(jwtService.extractUsername(REFRESH)).thenReturn("agent01");
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(new Cookie("refresh_token", REFRESH)))
