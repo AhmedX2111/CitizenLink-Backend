@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.security.filter;
 
 import com.ntg.citizenlink.security.JwtBlocklist;
+import com.ntg.citizenlink.security.config.SecurityErrorWriter;
 import com.ntg.citizenlink.service.interfaces.JwtService;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +18,7 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 
@@ -54,7 +56,8 @@ class JwtAuthenticationFilterTest {
 
     @BeforeEach
     void setUp() {
-        filter = new JwtAuthenticationFilter(jwtService, jwtBlocklist, userDetailsService);
+        filter = new JwtAuthenticationFilter(jwtService, jwtBlocklist, userDetailsService,
+                new SecurityErrorWriter(JsonMapper.builder().build()));
         SecurityContextHolder.clearContext();
         userDetails = new User(USERNAME, "password",
                 List.of(new SimpleGrantedAuthority("ROLE_HANDLER")));
@@ -191,6 +194,9 @@ class JwtAuthenticationFilterTest {
             filter.doFilter(request, response, filterChain);
 
             assertThat(response.getStatus()).isEqualTo(401);
+            // US-47: the 401 body must be the standard JSON envelope, not empty.
+            assertThat(response.getContentType()).contains("application/json");
+            assertThat(response.getContentAsString()).contains("UNAUTHORIZED");
             // filter chain must NOT be invoked — the 401 response is final
             org.mockito.Mockito.verifyNoInteractions(filterChain);
         }

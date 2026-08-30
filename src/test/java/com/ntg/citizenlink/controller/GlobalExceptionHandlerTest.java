@@ -18,8 +18,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
@@ -131,9 +133,19 @@ class GlobalExceptionHandlerTest {
     @Test
     void genuineServerError_stillReturns500() throws Exception {
         when(caseNoteService.getNotesByCaseId(any(), any())).thenThrow(new RuntimeException("boom"));
-        mockMvc.perform(get("/api/v1/cases/{caseId}/notes", CASE_ID))
+        MvcResult result = mockMvc.perform(get("/api/v1/cases/{caseId}/notes", CASE_ID))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.message").value("An unexpected error occurred"))
+                .andReturn();
+
+        // US-47 AC5: the 500 body is opaque — no exception message text,
+        // no exception class name, and no stack-frame marker.
+        String body = result.getResponse().getContentAsString();
+        assertThat(body)
+                .doesNotContain("boom")
+                .doesNotContain("RuntimeException")
+                .doesNotContain("at com.");
     }
 
     @Test

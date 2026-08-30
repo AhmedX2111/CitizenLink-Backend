@@ -1,6 +1,7 @@
 package com.ntg.citizenlink.security.filter;
 
 import com.ntg.citizenlink.security.JwtBlocklist;
+import com.ntg.citizenlink.security.config.SecurityErrorWriter;
 import com.ntg.citizenlink.service.interfaces.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -51,6 +52,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService          jwtService;
     private final JwtBlocklist        jwtBlocklist;
     private final UserDetailsService  userDetailsService;
+    private final SecurityErrorWriter securityErrorWriter;
 
     private final AccountStatusUserDetailsChecker accountStatusChecker =
             new AccountStatusUserDetailsChecker();
@@ -121,8 +123,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             } catch (UsernameNotFoundException ex) {
                 log.warn("User not found during JWT validation: {}", username);
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                return; // stop filter chain; invalid token must not become a 500
+                // US-47: return the standard 401 envelope (previously an empty body)
+                // instead of a bare status, then stop the chain so an invalid token
+                // can never fall through into a 500.
+                securityErrorWriter.writeUnauthorized(response);
+                return;
             }
         }
 
