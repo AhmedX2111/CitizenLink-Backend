@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -74,6 +75,28 @@ class FileStorageServiceTest {
         assertThatThrownBy(() -> fileStorageService.storeFile(file, "image/jpeg"))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("File type not allowed");
+        assertThat(Files.list(uploadRoot())).isEmpty();
+    }
+
+    @Test
+    void storeFile_withSizeOverLimit_throwsBeforeWriting() throws Exception {
+        // US-46 AC2: an oversized upload must be rejected up front — before any
+        // bytes reach the upload directory (validateFile runs before Files.copy).
+        FileStorageProperties props = new FileStorageProperties();
+        props.setUploadDir(tempDir.toString());
+        props.setMaxFileSize(1024);
+        props.setAllowedMimeTypes(new String[]{"application/pdf", "image/png"});
+        props.setAllowedExtensions(new String[]{".pdf", ".png"});
+        FileStorageService service = new FileStorageService(props);
+
+        byte[] content = new byte[2048];
+        Arrays.fill(content, (byte) 'x');
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "large.pdf", "application/pdf", content);
+
+        assertThatThrownBy(() -> service.storeFile(file, "application/pdf"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("File size exceeds");
         assertThat(Files.list(uploadRoot())).isEmpty();
     }
 

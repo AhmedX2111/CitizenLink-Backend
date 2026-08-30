@@ -18,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -113,6 +114,18 @@ class GlobalExceptionHandlerTest {
                         .content("hello"))
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void maxUploadSizeExceeded_returns413_withStandardEnvelope() throws Exception {
+        // US-46 AC6: the container-level upload limit (MaxUploadSizeExceededException)
+        // must map to 413 with the standard error envelope, not a 500.
+        when(caseNoteService.getNotesByCaseId(any(), any()))
+                .thenThrow(new MaxUploadSizeExceededException(5L * 1024 * 1024));
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes", CASE_ID))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"))
+                .andExpect(jsonPath("$.message").value("Upload exceeds the maximum allowed size"));
     }
 
     @Test
