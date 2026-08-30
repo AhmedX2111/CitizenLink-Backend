@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.config;
 
+import com.ntg.citizenlink.security.config.SecurityErrorWriter;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
@@ -10,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Security filter chain for {@code @WebMvcTest} slices.
@@ -41,5 +43,18 @@ public class TestSecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                         .anyRequest().authenticated());
         return http.build();
+    }
+
+    /**
+     * US-47: {@link JwtAuthenticationFilter} implements {@code jakarta.servlet.Filter},
+     * so it is included in {@code @WebMvcTest} slices — but its {@link SecurityErrorWriter}
+     * dependency is a plain {@code @Component} that the slice excludes. Provide it here
+     * (Jackson 3 {@code JsonMapper} from the slice's JacksonAutoConfiguration fits the
+     * {@code tools.jackson.databind.ObjectMapper} supertype) so sliced contexts can build
+     * the filter exactly as production does.
+     */
+    @Bean
+    public SecurityErrorWriter securityErrorWriter(ObjectMapper objectMapper) {
+        return new SecurityErrorWriter(objectMapper);
     }
 }

@@ -2,6 +2,7 @@ package com.ntg.citizenlink.controller;
 
 import com.ntg.citizenlink.dto.EncryptedAuthResponse;
 import com.ntg.citizenlink.dto.LoginRequest;
+import com.ntg.citizenlink.exception.GlobalExceptionHandler;
 import com.ntg.citizenlink.security.JwtBlocklist;
 import com.ntg.citizenlink.security.config.JwtProperties;
 import com.ntg.citizenlink.service.interfaces.AuthService;
@@ -85,7 +86,7 @@ public class AuthController {
 
     @PostMapping("/refresh")
     @SecurityRequirements
-    public ResponseEntity<EncryptedAuthResponse> refresh(
+    public ResponseEntity<?> refresh(
             @CookieValue(name = "refresh_token", required = false) String refreshToken,
             HttpServletRequest servletRequest,
             HttpServletResponse response) {
@@ -93,9 +94,7 @@ public class AuthController {
 
         if (refreshToken == null || refreshToken.isBlank()) {
             log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - missing refresh token cookie");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
-                    .build();
+            return unauthorizedWithClearedCookie(servletRequest);
         }
 
         String username;
@@ -103,25 +102,19 @@ public class AuthController {
             username = jwtService.extractUsername(refreshToken);
         } catch (Exception e) {
             log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - invalid token format");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
-                    .build();
+            return unauthorizedWithClearedCookie(servletRequest);
         }
 
         if (username == null || username.isBlank()) {
             log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - invalid token format");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
-                    .build();
+            return unauthorizedWithClearedCookie(servletRequest);
         }
 
         // Prevent concurrent refresh requests for the same user
         AtomicBoolean inProgress = refreshInProgress.computeIfAbsent(username, k -> new AtomicBoolean(false));
         if (!inProgress.compareAndSet(false, true)) {
             log.warn("REST response: POST /api/v1/auth/refresh - status: 401 - refresh already in progress for user: {}", username);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
-                    .build();
+            return unauthorizedWithClearedCookie(servletRequest);
         }
 
         try {
@@ -169,6 +162,21 @@ public class AuthController {
                 .path("/api/v1/auth")
                 .maxAge(0)
                 .build();
+    }
+
+    /**
+     * US-47: the refresh early-401 paths (missing/malformed/blank token and
+     * concurrent refresh) must return the standard {@code {code, message,
+     * details}} envelope — previously an empty body — while preserving the
+     * US-44 cookie-clearing behaviour (the refresh cookie is always cleared on
+     * a 401 so a stale cookie cannot be replayed).
+     */
+    private ResponseEntity<GlobalExceptionHandler.ErrorResponse> unauthorizedWithClearedCookie(
+            HttpServletRequest servletRequest) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.SET_COOKIE, clearRefreshCookie(servletRequest).toString())
+                .body(new GlobalExceptionHandler.ErrorResponse(
+                        "UNAUTHORIZED", "Authentication required", null));
     }
 
     @PostMapping("/logout")

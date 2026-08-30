@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -21,7 +20,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
@@ -53,6 +51,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsService      userDetailsService;
+    private final SecurityErrorWriter     securityErrorWriter;
 
     // -------------------------------------------------------------------------
     // Filter chain
@@ -102,7 +101,14 @@ public class SecurityConfig {
                         // 403 entry point). The client's silent-refresh interceptor keys
                         // on 401 to transparently rotate an expired token; a 403 here is
                         // indistinguishable from a genuine role failure.
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        // US-47: both failures now write the standard {code, message,
+                        // details} envelope (previously empty-body 401/403), matching
+                        // the MVC-layer schema. Anonymous → 401 via the entry point;
+                        // authenticated-but-wrong-role → 403 via the access-denied handler.
+                        .authenticationEntryPoint((request, response, authException) ->
+                                securityErrorWriter.writeUnauthorized(response))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                securityErrorWriter.writeForbidden(response))
                 )
 
                 // Register JWT filter before Spring's own username/password filter
