@@ -427,6 +427,67 @@ class NotesAttachmentsAccessControlIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    // US-43 AC3: admin can view ANY case, so requireAccessibleCase always passes
+    // and the 404 can only come from the note<->case binding check.
+    @Test
+    void admin_updatingNoteId_fromAnotherCase_withTamperedCaseId_returns404() throws Exception {
+        String ownerCaseId = createCase(ownerToken);
+        String noteId = addNote(ownerToken, ownerCaseId);
+        String otherCaseId = createCase(intruderToken);
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/notes/{noteId}", otherCaseId, noteId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"tampered via other case\"}"))
+                .andExpect(status().isNotFound());
+
+        // The note in its real case must be untouched.
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes/{noteId}", ownerCaseId, noteId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body").value("Access control note"));
+    }
+
+    // US-43 AC3: same binding-check isolation for delete.
+    @Test
+    void admin_deletingNoteId_fromAnotherCase_withTamperedCaseId_returns404() throws Exception {
+        String ownerCaseId = createCase(ownerToken);
+        String noteId = addNote(ownerToken, ownerCaseId);
+        String otherCaseId = createCase(intruderToken);
+
+        mockMvc.perform(delete("/api/v1/cases/{caseId}/notes/{noteId}", otherCaseId, noteId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
+
+        // The note must still exist in its real case.
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes/{noteId}", ownerCaseId, noteId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(noteId));
+    }
+
+    // US-43 AC1: the paginated listing enforces the same case access rule.
+    @Test
+    void intruder_cannotListPaginatedNotes_onAnotherUsersCase() throws Exception {
+        String caseId = createCase(ownerToken);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes/paginated", caseId)
+                        .param("page", "0")
+                        .param("size", "10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + intruderToken))
+                .andExpect(status().isNotFound());
+    }
+
+    // US-43 AC5: the count endpoint enforces the same case access rule.
+    @Test
+    void intruder_cannotCountNotes_onAnotherUsersCase() throws Exception {
+        String caseId = createCase(ownerToken);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/notes/count", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + intruderToken))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void invalidNoteIdFormat_returns400() throws Exception {
         String caseId = createCase(ownerToken);
@@ -561,6 +622,58 @@ class NotesAttachmentsAccessControlIntegrationTest {
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/attachments/{attachmentId}", otherCaseId, attachmentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isNotFound());
+    }
+
+    // US-43 AC3: admin can view ANY case, so requireAccessibleCase always passes
+    // and the 404 can only come from the attachment<->case binding check.
+    @Test
+    void admin_downloadingAttachmentId_fromAnotherCase_withTamperedCaseId_returns404() throws Exception {
+        String ownerCaseId = createCase(ownerToken);
+        String attachmentId = uploadAttachment(ownerToken, ownerCaseId);
+        String otherCaseId = createCase(intruderToken);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/attachments/{attachmentId}/download", otherCaseId, attachmentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
+    }
+
+    // US-43 AC3: same binding-check isolation for delete.
+    @Test
+    void admin_deletingAttachmentId_fromAnotherCase_withTamperedCaseId_returns404() throws Exception {
+        String ownerCaseId = createCase(ownerToken);
+        String attachmentId = uploadAttachment(ownerToken, ownerCaseId);
+        String otherCaseId = createCase(intruderToken);
+
+        mockMvc.perform(delete("/api/v1/cases/{caseId}/attachments/{attachmentId}", otherCaseId, attachmentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
+
+        // The attachment must still be listed in its real case.
+        mockMvc.perform(get("/api/v1/cases/{caseId}/attachments", ownerCaseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(attachmentId));
+    }
+
+    // US-43 AC2: attachment metadata lookup enforces the same case access rule.
+    @Test
+    void intruder_cannotGetAttachmentById_onAnotherUsersCase() throws Exception {
+        String caseId = createCase(ownerToken);
+        String attachmentId = uploadAttachment(ownerToken, caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/attachments/{attachmentId}", caseId, attachmentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + intruderToken))
+                .andExpect(status().isNotFound());
+    }
+
+    // US-43 AC5: the count endpoint enforces the same case access rule.
+    @Test
+    void intruder_cannotCountAttachments_onAnotherUsersCase() throws Exception {
+        String caseId = createCase(ownerToken);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/attachments/count", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + intruderToken))
                 .andExpect(status().isNotFound());
     }
 
