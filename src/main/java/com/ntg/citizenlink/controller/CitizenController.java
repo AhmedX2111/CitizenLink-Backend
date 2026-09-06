@@ -4,6 +4,7 @@ import com.ntg.citizenlink.dto.agent.request.CitizenSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
+import com.ntg.citizenlink.dto.agent.response.CaseSummaryResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenResponse;
 import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
@@ -13,6 +14,8 @@ import com.ntg.citizenlink.security.config.SecurityContextHelper;
 import com.ntg.citizenlink.service.interfaces.CaseService;
 import com.ntg.citizenlink.service.interfaces.CitizenService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -21,12 +24,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("/api/v1/citizens")
 @RequiredArgsConstructor
@@ -111,6 +116,28 @@ public class CitizenController {
         CaseResponse response = caseService.createCitizenCase(id, request, userId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * US-59: page through a citizen's complete permitted case history, ordered
+     * by last update (updatedAt DESC). The same role->visibility restriction
+     * as the 360 profile Recent Cases list applies, so this endpoint never
+     * returns a case the requester could not see in the profile.
+     */
+    @GetMapping("/{id}/cases")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
+    public ResponseEntity<PagedResponse<CaseSummaryResponse>> getCitizenCaseHistory(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        log.info("GET /api/v1/citizens/{}/cases - requester: {}, page: {}, size: {}",
+                id, securityContextHelper.getAuthenticatedUsername(), page, size);
+
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        PagedResponse<CaseSummaryResponse> response =
+                citizenService.getCitizenCaseHistory(id, userId, page, size);
+
+        return ResponseEntity.ok(response);
     }
 
     /**

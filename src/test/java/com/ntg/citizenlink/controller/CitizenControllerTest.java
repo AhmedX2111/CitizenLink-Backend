@@ -3,7 +3,9 @@ package com.ntg.citizenlink.controller;
 import com.ntg.citizenlink.config.TestSecurityConfig;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
+import com.ntg.citizenlink.dto.agent.response.CaseSummaryResponse;
 import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
+import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.CaseType;
 import com.ntg.citizenlink.enums.Channel;
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -270,5 +273,93 @@ class CitizenControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(caseService, never()).findDuplicateCandidates(any(), any(), any(), any());
+    }
+
+    // ── US-59: paged citizen case history ──────────────────────────────
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void getCitizenCaseHistory_returns200_withPagedContent() throws Exception {
+        when(securityContextHelper.getAuthenticatedUserId()).thenReturn(USER_ID);
+        when(securityContextHelper.getAuthenticatedUsername()).thenReturn("admin01");
+        CaseSummaryResponse summary = CaseSummaryResponse.builder()
+                .id(CASE_ID)
+                .caseNumber("CASE-2026-00009")
+                .subject("Water leak")
+                .status("NEW")
+                .priority("HIGH")
+                .departmentNameEn("Housing")
+                .departmentNameAr("الإسكان")
+                .updatedAt(OffsetDateTime.now())
+                .build();
+        when(citizenService.getCitizenCaseHistory(eq(CITIZEN_ID), eq(USER_ID), eq(0), eq(20)))
+                .thenReturn(new PagedResponse<>(List.of(summary), 0, 20, 1, 1));
+
+        mockMvc.perform(get("/api/v1/citizens/" + CITIZEN_ID + "/cases"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(CASE_ID.toString()))
+                .andExpect(jsonPath("$.content[0].caseNumber").value("CASE-2026-00009"))
+                .andExpect(jsonPath("$.content[0].status").value("NEW"))
+                .andExpect(jsonPath("$.content[0].departmentNameEn").value("Housing"))
+                .andExpect(jsonPath("$.content[0].departmentNameAr").value("الإسكان"))
+                .andExpect(jsonPath("$.content[0].updatedAt").isNotEmpty())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    @WithMockUser(roles = "AGENT")
+    void getCitizenCaseHistory_forwardsPageAndSize() throws Exception {
+        when(securityContextHelper.getAuthenticatedUserId()).thenReturn(USER_ID);
+        when(securityContextHelper.getAuthenticatedUsername()).thenReturn("agent01");
+        when(citizenService.getCitizenCaseHistory(eq(CITIZEN_ID), eq(USER_ID), eq(2), eq(10)))
+                .thenReturn(new PagedResponse<>(List.of(), 2, 10, 0, 0));
+
+        mockMvc.perform(get("/api/v1/citizens/" + CITIZEN_ID + "/cases")
+                        .param("page", "2")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(2))
+                .andExpect(jsonPath("$.size").value(10));
+
+        verify(citizenService).getCitizenCaseHistory(CITIZEN_ID, USER_ID, 2, 10);
+    }
+
+    @Test
+    @WithMockUser(roles = "AGENT")
+    void getCitizenCaseHistory_returns404_whenCitizenUnknown() throws Exception {
+        when(securityContextHelper.getAuthenticatedUserId()).thenReturn(USER_ID);
+        when(securityContextHelper.getAuthenticatedUsername()).thenReturn("agent01");
+        when(citizenService.getCitizenCaseHistory(any(), eq(USER_ID), anyInt(), anyInt()))
+                .thenThrow(new ResourceNotFoundException("Citizen not found"));
+
+        mockMvc.perform(get("/api/v1/citizens/" + CITIZEN_ID + "/cases"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    @WithMockUser(roles = "AGENT")
+    void getCitizenCaseHistory_returns400_whenPageNegativeOrSizeOutOfRange() throws Exception {
+        mockMvc.perform(get("/api/v1/citizens/" + CITIZEN_ID + "/cases")
+                        .param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        mockMvc.perform(get("/api/v1/citizens/" + CITIZEN_ID + "/cases")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(citizenService, never()).getCitizenCaseHistory(any(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    @WithMockUser
+    void getCitizenCaseHistory_returns403_whenRoleInsufficient() throws Exception {
+        mockMvc.perform(get("/api/v1/citizens/" + CITIZEN_ID + "/cases"))
+                .andExpect(status().isForbidden());
+
+        verify(citizenService, never()).getCitizenCaseHistory(any(), any(), anyInt(), anyInt());
     }
 }
