@@ -9,6 +9,7 @@ import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
+import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.response.StatusHistoryResponse;
 import com.ntg.citizenlink.entities.*;
@@ -77,7 +78,8 @@ public class CaseServiceImpl implements CaseService {
                 request.getCategoryId(),
                 request.getDepartmentId(),
                 request.getAssignedToUserId(),
-                request.getDueAt()));
+                request.getDueAt(),
+                request.getDuplicateReason()));
     }
 
     @Override
@@ -105,7 +107,48 @@ public class CaseServiceImpl implements CaseService {
                 request.getCategoryId(),
                 request.getDepartmentId(),
                 request.getAssignedToUserId(),
-                request.getDueAt()));
+                request.getDueAt(),
+                request.getDuplicateReason()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DuplicateCaseCandidateResponse> findDuplicateCandidates(UUID citizenId, UUID categoryId,
+                                                                        UUID departmentId, UUID requesterId) {
+        log.debug("Checking possible duplicate cases for citizen {} (category {}, department {})",
+                citizenId, categoryId, departmentId);
+
+        citizenRepository.findById(citizenId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", citizenId));
+
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        // Same requester-visibility restriction as the Citizen 360
+        // recent-cases list — the warning must never surface a case the
+        // requester could not open anyway (documented rule, US-58).
+        UUID createdByFilter = null;
+        UUID assignedToFilter = null;
+
+        switch (requester.getRole()) {
+            case ADMIN:
+            case SUPERVISOR:
+                // both null — see all of the citizen's cases
+                break;
+            case HANDLER:
+                assignedToFilter = requesterId;
+                break;
+            default: // AGENT
+                createdByFilter = requesterId;
+                break;
+        }
+
+        return caseRepository.findNonFinalDuplicateCandidates(
+                        citizenId, categoryId, departmentId, createdByFilter, assignedToFilter)
+                .stream()
+                .map(c -> new DuplicateCaseCandidateResponse(
+                        c.getId(), c.getCaseNumber(), c.getSubject(), c.getStatus(), c.getCreatedAt()))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -169,6 +212,7 @@ public class CaseServiceImpl implements CaseService {
         newCase.setDepartment(department);
         newCase.setCreatedByUser(creator);
         newCase.setAssignedToUser(assignedTo);
+        newCase.setDuplicateReason(spec.duplicateReason());
 
         Case saved = caseRepository.save(newCase);
 
@@ -206,7 +250,8 @@ public class CaseServiceImpl implements CaseService {
             UUID categoryId,
             UUID departmentId,
             UUID assignedToUserId,
-            OffsetDateTime dueAt) {
+            OffsetDateTime dueAt,
+            String duplicateReason) {
     }
 
     @Override

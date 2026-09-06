@@ -6,6 +6,7 @@ import com.ntg.citizenlink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenResponse;
+import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.security.config.SecurityContextHelper;
@@ -22,6 +23,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -109,6 +111,28 @@ public class CitizenController {
         CaseResponse response = caseService.createCitizenCase(id, request, userId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * US-58: possible-duplicate preflight before creating a case from the
+     * Citizen 360 screen. Read-only and non-blocking — the caller only uses
+     * the result to decide whether to warn the agent; creation itself is
+     * never gated server-side.
+     */
+    @GetMapping("/{id}/cases/duplicate-candidates")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
+    public ResponseEntity<List<DuplicateCaseCandidateResponse>> findDuplicateCandidates(
+            @PathVariable UUID id,
+            @RequestParam UUID categoryId,
+            @RequestParam UUID departmentId) {
+        log.info("GET /api/v1/citizens/{}/cases/duplicate-candidates - requester: {}",
+                id, securityContextHelper.getAuthenticatedUsername());
+
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        List<DuplicateCaseCandidateResponse> candidates =
+                caseService.findDuplicateCandidates(id, categoryId, departmentId, userId);
+
+        return ResponseEntity.ok(candidates);
     }
 
     /**
