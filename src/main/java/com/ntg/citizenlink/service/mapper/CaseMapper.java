@@ -1,8 +1,12 @@
 package com.ntg.citizenlink.service.mapper;
 
-
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
 import com.ntg.citizenlink.entities.Case;
+import com.ntg.citizenlink.enums.UserRole;
+import com.ntg.citizenlink.util.MaskingContext;
+import com.ntg.citizenlink.util.MaskingLevel;
+import com.ntg.citizenlink.util.MaskingPolicy;
+import com.ntg.citizenlink.util.PiiMasker;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,7 +19,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class CaseMapper {
 
-    public CaseResponse toResponse(Case c) {
+    public CaseResponse toResponse(Case c, UserRole requesterRole) {
         CaseResponse r = new CaseResponse();
 
         r.setId(c.getId());
@@ -37,8 +41,8 @@ public class CaseMapper {
         if (c.getCitizen() != null) {
             r.setCitizenId(c.getCitizen().getId());
             r.setCitizenFullName(c.getCitizen().getFullName());
-            r.setCitizenNationalId(c.getCitizen().getNationalId());
-            r.setCitizenPhone(c.getCitizen().getPhone());
+            r.setCitizenNationalId(mask(requesterRole, "nationalId", c.getCitizen().getNationalId(), MaskingContext.CASE_LIST));
+            r.setCitizenPhone(mask(requesterRole, "phone", c.getCitizen().getPhone(), MaskingContext.CASE_LIST));
         }
 
         // Category
@@ -68,5 +72,18 @@ public class CaseMapper {
         }
 
         return r;
+    }
+
+    private static String mask(UserRole role, String fieldName, String value, MaskingContext context) {
+        MaskingLevel level = MaskingPolicy.forField(role, fieldName, context);
+        if (level == MaskingLevel.MASKED) {
+            return switch (fieldName) {
+                case "nationalId" -> PiiMasker.maskNationalId(value);
+                case "phone" -> PiiMasker.maskPhone(value);
+                case "email" -> PiiMasker.maskEmail(value);
+                default -> value;
+            };
+        }
+        return value;
     }
 }

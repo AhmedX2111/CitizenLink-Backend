@@ -140,7 +140,7 @@ public class CaseServiceImpl implements CaseService {
         }
 
         log.info("Case created successfully with ID: {}", saved.getId());
-        return caseMapper.toResponse(saved);
+        return caseMapper.toResponse(saved, creator.getRole());
     }
 
     @Override
@@ -179,7 +179,7 @@ public class CaseServiceImpl implements CaseService {
 
         List<CaseResponse> content = page.getContent()
                 .stream()
-                .map(caseMapper::toResponse)
+                .map(c -> caseMapper.toResponse(c, requester.getRole()))
                 .collect(Collectors.toList());
 
         return new PagedResponse<>(
@@ -207,7 +207,7 @@ public class CaseServiceImpl implements CaseService {
             throw ResourceNotFoundException.of("Case", caseId);
         }
 
-        return caseMapper.toResponse(found);
+        return caseMapper.toResponse(found, requester.getRole());
     }
 
     @Override
@@ -372,7 +372,7 @@ public class CaseServiceImpl implements CaseService {
                 caseId, saved.getCaseNumber(), request.getAction(), fromStatus, toStatus,
                 requester.getId(), requester.getDisplayName());
 
-        return caseMapper.toResponse(saved);
+        return caseMapper.toResponse(saved, requester.getRole());
     }
 
     private StatusHistoryResponse toStatusHistoryResponse(StatusHistory sh) {

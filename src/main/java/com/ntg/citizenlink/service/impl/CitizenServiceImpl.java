@@ -12,10 +12,15 @@ import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Citizen;
 import com.ntg.citizenlink.enums.CaseStatus;
+import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.repositories.CitizenRepository;
 import com.ntg.citizenlink.service.interfaces.CitizenService;
+import com.ntg.citizenlink.util.MaskingContext;
+import com.ntg.citizenlink.util.MaskingLevel;
+import com.ntg.citizenlink.util.MaskingPolicy;
+import com.ntg.citizenlink.util.PiiMasker;
 import com.ntg.citizenlink.util.SearchNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +46,7 @@ public class CitizenServiceImpl implements CitizenService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
+    public PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request, UUID requesterId) {
         // M-15: the search term may be a national ID or phone number. Log only
         // presence + length, never the identifier itself.
         String searchTerm = request.getSearchTerm();
@@ -87,10 +92,19 @@ public class CitizenServiceImpl implements CitizenService {
                         row -> (Long) row[1]
                 ));
 
-        List<CitizenResponse> content = citizenPage.getContent()
-                .stream()
-                .map(c -> toResponse(c, caseCountsById.getOrDefault(c.getId(), 0L)))
-                .collect(Collectors.toList());
+        List<CitizenResponse> content;
+        if (citizenPage.getContent().isEmpty()) {
+            content = List.of();
+        } else {
+            AppUser requester = appUserRepository.findById(requesterId)
+                    .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+            UserRole requesterRole = requester.getRole();
+            content = citizenPage.getContent()
+                    .stream()
+                    .map(c -> toResponse(c, caseCountsById.getOrDefault(c.getId(), 0L)))
+                    .map(response -> applyMasking(response, requesterRole, MaskingContext.SEARCH_RESULTS))
+                    .collect(Collectors.toList());
+        }
 
         return new PagedResponse<>(
                 content,
@@ -201,12 +215,12 @@ public class CitizenServiceImpl implements CitizenService {
                 .findVisibleByCitizenIdOrderByCreatedAtDesc(
                         id, createdByFilter, assignedToFilter, PageRequest.of(0, 5));
 
-        return CitizenProfileResponse.builder()
+        CitizenProfileResponse response = CitizenProfileResponse.builder()
                 .id(citizen.getId())
                 .fullName(citizen.getFullName())
-                .nationalId(citizen.getNationalId())
-                .phone(citizen.getPhone())
-                .email(citizen.getEmail())
+                .nationalId(maskIfNeeded(requester.getRole(), "nationalId", citizen.getNationalId(), MaskingContext.DETAIL_VIEW, PiiMasker::maskNationalId))
+                .phone(maskIfNeeded(requester.getRole(), "phone", citizen.getPhone(), MaskingContext.DETAIL_VIEW, PiiMasker::maskPhone))
+                .email(maskIfNeeded(requester.getRole(), "email", citizen.getEmail(), MaskingContext.DETAIL_VIEW, PiiMasker::maskEmail))
                 .preferredLanguage(citizen.getPreferredLanguage())
                 .createdAt(citizen.getCreatedAt())
                 .createdByUserName(citizen.getCreatedByUser() != null ?
@@ -218,6 +232,8 @@ public class CitizenServiceImpl implements CitizenService {
                         .map(this::toCaseSummary)
                         .collect(Collectors.toList()))
                 .build();
+
+        return response;
     }
 
     @Override
@@ -238,7 +254,8 @@ public class CitizenServiceImpl implements CitizenService {
         long caseCount = caseRepository.countVisibleByCitizenId(
                 id, filters.createdByUserId, filters.assignedToUserId);
 
-        return toResponse(citizen, caseCount);
+        CitizenResponse response = toResponse(citizen, caseCount);
+        return applyMasking(response, requester.getRole(), MaskingContext.DETAIL_VIEW);
     }
 
     /**
@@ -285,6 +302,25 @@ public class CitizenServiceImpl implements CitizenService {
                 .createdAt(citizen.getCreatedAt())
                 .caseCount((int) caseCount)
                 .build();
+    }
+
+    /**
+     * Apply role-based masking to a CitizenResponse according to the decision table.
+     */
+    private CitizenResponse applyMasking(CitizenResponse response, UserRole role, MaskingContext context) {
+        if (response == null) return response;
+        response.setNationalId(maskIfNeeded(role, "nationalId", response.getNationalId(), context, PiiMasker::maskNationalId));
+        response.setPhone(maskIfNeeded(role, "phone", response.getPhone(), context, PiiMasker::maskPhone));
+        response.setEmail(maskIfNeeded(role, "email", response.getEmail(), context, PiiMasker::maskEmail));
+        return response;
+    }
+
+    private String maskIfNeeded(UserRole role, String fieldName, String value, MaskingContext context, java.util.function.Function<String, String> masker) {
+        MaskingLevel level = MaskingPolicy.forField(role, fieldName, context);
+        if (level == MaskingLevel.MASKED) {
+            return masker.apply(value);
+        }
+        return value;
     }
 
     /**

@@ -2,8 +2,13 @@ package com.ntg.citizenlink.service.impl;
 
 import com.ntg.citizenlink.constants.DateRangeValidator;
 import com.ntg.citizenlink.entities.Case;
+import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.service.interfaces.CsvExportService;
+import com.ntg.citizenlink.util.MaskingContext;
+import com.ntg.citizenlink.util.MaskingLevel;
+import com.ntg.citizenlink.util.MaskingPolicy;
+import com.ntg.citizenlink.util.PiiMasker;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
@@ -54,7 +59,7 @@ public class CsvExportServiceImpl implements CsvExportService {
 
     @Override
     @Transactional(readOnly = true)
-    public void exportCasesCsv(OutputStream out, OffsetDateTime startDate, OffsetDateTime endDate) throws IOException {
+    public void exportCasesCsv(OutputStream out, OffsetDateTime startDate, OffsetDateTime endDate, UserRole requesterRole) throws IOException {
         OffsetDateTime start = startDate != null ? startDate : OffsetDateTime.now(ZoneOffset.UTC).minusDays(DEFAULT_RANGE_DAYS);
         OffsetDateTime end = endDate != null ? endDate : OffsetDateTime.now(ZoneOffset.UTC);
         DateRangeValidator.validate(start, end);
@@ -70,7 +75,7 @@ public class CsvExportServiceImpl implements CsvExportService {
         do {
             slice = caseRepository.findCasesForReportBetween(start, end, PageRequest.of(pageNumber, PAGE_SIZE));
             for (Case c : slice.getContent()) {
-                writer.write(toCsvRow(c));
+                writer.write(toCsvRow(c, requesterRole));
                 writer.newLine();
             }
             writer.flush();
@@ -78,7 +83,27 @@ public class CsvExportServiceImpl implements CsvExportService {
         } while (slice.hasNext());
     }
 
-    private String toCsvRow(Case c) {
+    private String toCsvRow(Case c, UserRole requesterRole) {
+        String nationalId = c.getCitizen() != null ? c.getCitizen().getNationalId() : "";
+        String phone = c.getCitizen() != null ? c.getCitizen().getPhone() : "";
+        String email = c.getCitizen() != null ? c.getCitizen().getEmail() : "";
+
+        if (requesterRole != null) {
+            MaskingContext ctx = MaskingContext.CSV_EXPORT;
+            MaskingLevel nidLevel = MaskingPolicy.forField(requesterRole, "nationalId", ctx);
+            if (nidLevel == MaskingLevel.MASKED) {
+                nationalId = PiiMasker.maskNationalId(nationalId);
+            }
+            MaskingLevel phoneLevel = MaskingPolicy.forField(requesterRole, "phone", ctx);
+            if (phoneLevel == MaskingLevel.MASKED) {
+                phone = PiiMasker.maskPhone(phone);
+            }
+            MaskingLevel emailLevel = MaskingPolicy.forField(requesterRole, "email", ctx);
+            if (emailLevel == MaskingLevel.MASKED) {
+                email = PiiMasker.maskEmail(email);
+            }
+        }
+
         return String.join(",",
                 csvEscape(c.getCaseNumber()),
                 csvEscape(c.getSubject()),
@@ -87,9 +112,9 @@ public class CsvExportServiceImpl implements CsvExportService {
                 csvEscape(safeEnum(c.getPriority())),
                 csvEscape(safeEnum(c.getStatus())),
                 csvEscape(safeEnum(c.getChannel())),
-                csvEscape(c.getCitizen() != null ? c.getCitizen().getNationalId() : ""),
+                csvEscape(nationalId),
                 csvEscape(c.getCitizen() != null ? c.getCitizen().getFullName() : ""),
-                csvEscape(c.getCitizen() != null ? c.getCitizen().getPhone() : ""),
+                csvEscape(phone),
                 csvEscape(c.getCategory() != null ? c.getCategory().getNameEn() : ""),
                 csvEscape(c.getDepartment() != null ? c.getDepartment().getNameEn() : ""),
                 csvEscape(c.getCreatedByUser() != null ? c.getCreatedByUser().getDisplayName() : ""),

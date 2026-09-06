@@ -1,8 +1,10 @@
 package com.ntg.citizenlink.controller;
 
 import com.ntg.citizenlink.dto.agent.response.VolumeReportResponse;
+import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.service.ReportService;
 import com.ntg.citizenlink.service.interfaces.CsvExportService;
+import com.ntg.citizenlink.security.config.SecurityContextHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
@@ -25,6 +27,7 @@ public class ReportController {
 
     private final ReportService volumeReportService;
     private final CsvExportService csvExportService;
+    private final SecurityContextHelper securityContextHelper;
 
     /**
      * US-27, RPT-01/RPT-02/RPT-04: daily volume report with top categories.
@@ -61,10 +64,12 @@ public class ReportController {
         String filename = "citizenlink-cases-"
                 + LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE) + ".csv";
 
+        UserRole requesterRole = securityContextHelper.getAuthenticatedUser().getRole();
+
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment().filename(filename).build().toString())
-                .body(out -> csvExportService.exportCasesCsv(out, start, end));
+                .body(out -> csvExportService.exportCasesCsv(out, start, end, requesterRole));
     }
 }

@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -24,6 +25,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -228,5 +230,96 @@ class CitizenSearchIntegrationTest {
         mockMvc.perform(get("/api/v1/citizens/search")
                         .param("searchTerm", "test"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void search_agent_seesMaskedSensitiveFields() throws Exception {
+        // Create citizen with full PII
+        AppUser adminCreator = EntityFactory.appUser(UserRole.ADMIN);
+        adminCreator.setUsername("admin_creator." + EntityFactory.uniqueSuffix());
+        adminCreator.setEmail(adminCreator.getUsername() + "@test.gov");
+        adminCreator.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        userRepository.save(adminCreator);
+
+        Citizen citizen = new Citizen();
+        citizen.setFullName("Ahmed Mohamed");
+        citizen.setFullNameNormalized("ahmed mohamed");
+        citizen.setNationalId("9876543210987654");
+        citizen.setPhone("01099998888");
+        citizen.setEmail("ahmed@test.gov");
+        citizen.setCreatedByUser(adminCreator);
+        citizenRepository.save(citizen);
+
+        // Login as AGENT and search — should see masked values
+        AppUser agent = EntityFactory.appUser(UserRole.AGENT);
+        agent.setUsername("agent_mask." + EntityFactory.uniqueSuffix());
+        agent.setEmail(agent.getUsername() + "@test.gov");
+        agent.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        userRepository.save(agent);
+
+        MvcResult agentLogin = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + agent.getUsername() + "\",\"password\":\"" + PASSWORD + "\"}"))
+                .andExpect(status().isOk()).andReturn();
+        String agentToken = objectMapper.readTree(agentLogin.getResponse().getContentAsString()).get("token").asText();
+
+        mockMvc.perform(get("/api/v1/citizens/search")
+                        .header(HttpHeaders.AUTHORIZATION, bearerFor(agentToken))
+                        .param("searchTerm", "ahmed")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].nationalId").value("987****7654"))
+                .andExpect(jsonPath("$.content[0].phone").value("010****8888"))
+                .andExpect(jsonPath("$.content[0].email").value("a****@test.gov"))
+                .andExpect(jsonPath("$.content[0].fullName").value("Ahmed Mohamed")); // never masked
+    }
+
+    @Test
+    void search_admin_seesFullSensitiveFields() throws Exception {
+        // Create citizen with full PII
+        AppUser creator = EntityFactory.appUser(UserRole.ADMIN);
+        creator.setUsername("admin_creator2." + EntityFactory.uniqueSuffix());
+        creator.setEmail(creator.getUsername() + "@test.gov");
+        creator.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        userRepository.save(creator);
+
+        Citizen citizen = new Citizen();
+        citizen.setFullName("Sara Ahmed");
+        citizen.setFullNameNormalized("sara ahmed");
+        citizen.setNationalId("1112223334445555");
+        citizen.setPhone("01122233344");
+        citizen.setEmail("sara@test.gov");
+        citizen.setCreatedByUser(creator);
+        citizenRepository.save(citizen);
+
+        // Login as ADMIN and search — should see full values
+        AppUser admin = EntityFactory.appUser(UserRole.ADMIN);
+        admin.setUsername("admin_full." + EntityFactory.uniqueSuffix());
+        admin.setEmail(admin.getUsername() + "@test.gov");
+        admin.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        userRepository.save(admin);
+
+        MvcResult adminLogin = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + admin.getUsername() + "\",\"password\":\"" + PASSWORD + "\"}"))
+                .andExpect(status().isOk()).andReturn();
+        String adminToken = objectMapper.readTree(adminLogin.getResponse().getContentAsString()).get("token").asText();
+
+        mockMvc.perform(get("/api/v1/citizens/search")
+                        .header(HttpHeaders.AUTHORIZATION, bearerFor(adminToken))
+                        .param("searchTerm", "sara ahmed")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].nationalId").value("111****5555"))
+                .andExpect(jsonPath("$.content[0].phone").value("011****3344"))
+                .andExpect(jsonPath("$.content[0].email").value("s****@test.gov"));
+    }
+
+    private String bearerFor(String token) {
+        return "Bearer " + token;
     }
 }

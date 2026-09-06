@@ -64,6 +64,9 @@ class CitizenServiceImplTest {
         citizen = new Citizen();
         citizen.setId(citizenId);
         citizen.setFullName("Citizen One");
+        citizen.setNationalId("1234567890123456");
+        citizen.setPhone("01012345678");
+        citizen.setEmail("citizen@test.gov");
         requester = new AppUser();
         requester.setId(requesterId);
         requester.setDisplayName("User");
@@ -292,7 +295,7 @@ class CitizenServiceImplTest {
         CitizenSearchRequest request = new CitizenSearchRequest();
         request.setSearchTerm("   ");
 
-        var result = citizenService.searchCitizens(request);
+        var result = citizenService.searchCitizens(request, requesterId);
 
         assertThat(result.getContent()).isEmpty();
         assertThat(result.getTotalElements()).isZero();
@@ -303,7 +306,7 @@ class CitizenServiceImplTest {
         CitizenSearchRequest request = new CitizenSearchRequest();
         request.setSearchTerm(null);
 
-        var result = citizenService.searchCitizens(request);
+        var result = citizenService.searchCitizens(request, requesterId);
 
         assertThat(result.getContent()).isEmpty();
     }
@@ -329,8 +332,9 @@ class CitizenServiceImplTest {
         counts1.add(new Object[]{citizen.getId(), 5L});
         when(citizenRepository.countCasesByCitizenIds(List.of(citizen.getId())))
                 .thenReturn(counts1);
+        when(appUserRepository.findById(requesterId)).thenReturn(Optional.of(requester));
 
-        var result = citizenService.searchCitizens(request);
+        var result = citizenService.searchCitizens(request, requesterId);
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getFullName()).isEqualTo("أحمد");
@@ -358,8 +362,9 @@ class CitizenServiceImplTest {
         counts2.add(new Object[]{citizen.getId(), 5L});
         when(citizenRepository.countCasesByCitizenIds(List.of(citizen.getId())))
                 .thenReturn(counts2);
+        when(appUserRepository.findById(requesterId)).thenReturn(Optional.of(requester));
 
-        var result = citizenService.searchCitizens(request);
+        var result = citizenService.searchCitizens(request, requesterId);
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getCaseCount()).isEqualTo(5);
@@ -376,7 +381,7 @@ class CitizenServiceImplTest {
         when(citizenRepository.searchCitizens("invalid-phone", "invalid-phone", null, PageRequest.of(0, 10)))
                 .thenReturn(page);
 
-        var result = citizenService.searchCitizens(request);
+        var result = citizenService.searchCitizens(request, requesterId);
 
         assertThat(result.getContent()).isEmpty();
     }
@@ -392,7 +397,7 @@ class CitizenServiceImplTest {
         when(citizenRepository.searchCitizens("احمد", "أحمد", null, PageRequest.of(0, 10)))
                 .thenReturn(page);
 
-        citizenService.searchCitizens(request);
+        citizenService.searchCitizens(request, requesterId);
 
         verify(citizenRepository).searchCitizens("احمد", "أحمد", null, PageRequest.of(0, 10));
     }
@@ -427,8 +432,9 @@ class CitizenServiceImplTest {
         counts3.add(new Object[]{id2, 1L});
         when(citizenRepository.countCasesByCitizenIds(List.of(id1, id2)))
                 .thenReturn(counts3);
+        when(appUserRepository.findById(requesterId)).thenReturn(Optional.of(requester));
 
-        var result = citizenService.searchCitizens(request);
+        var result = citizenService.searchCitizens(request, requesterId);
 
         assertThat(result.getContent()).hasSize(2);
         assertThat(result.getContent().get(0).getCaseCount()).isEqualTo(3);
@@ -473,5 +479,136 @@ class CitizenServiceImplTest {
                 "احمد".equals(c.getFullNameNormalized())
         ));
     }
+
+    // ── masking in search results ───────────────────────────────────────
+
+    @Test
+    void searchCitizens_masksSensitiveFields_forAllRoles() {
+        UUID agentId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm("test");
+        request.setPage(0);
+        request.setSize(10);
+
+        Citizen citizen = new Citizen();
+        citizen.setId(UUID.randomUUID());
+        citizen.setFullName("Ahmed Ali");
+        citizen.setFullNameNormalized("ahmed ali");
+        citizen.setNationalId("1234567890123456");
+        citizen.setPhone("01012345678");
+        citizen.setEmail("ahmed@test.gov");
+
+        Page<Citizen> page = new PageImpl<>(List.of(citizen), PageRequest.of(0, 10), 1);
+        when(citizenRepository.searchCitizens("test", "test", null, PageRequest.of(0, 10)))
+                .thenReturn(page);
+        List<Object[]> counts = new ArrayList<>();
+        counts.add(new Object[]{citizen.getId(), 0L});
+        when(citizenRepository.countCasesByCitizenIds(List.of(citizen.getId())))
+                .thenReturn(counts);
+
+        // AGENT — all sensitive fields masked
+        AppUser agent = new AppUser();
+        agent.setId(agentId);
+        agent.setRole(UserRole.AGENT);
+        when(appUserRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        var agentResult = citizenService.searchCitizens(request, agentId);
+        assertThat(agentResult.getContent().get(0).getNationalId()).isEqualTo("123****3456");
+        assertThat(agentResult.getContent().get(0).getPhone()).isEqualTo("010****5678");
+        assertThat(agentResult.getContent().get(0).getEmail()).isEqualTo("a****@test.gov");
+
+        // ADMIN — search results are ALSO masked for all roles per decision table
+        CitizenSearchRequest adminRequest = new CitizenSearchRequest();
+        adminRequest.setSearchTerm("test");
+        adminRequest.setPage(0);
+        adminRequest.setSize(10);
+        AppUser admin = new AppUser();
+        admin.setId(adminId);
+        admin.setRole(UserRole.ADMIN);
+        when(appUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
+
+        var adminResult = citizenService.searchCitizens(adminRequest, adminId);
+        assertThat(adminResult.getContent().get(0).getNationalId()).isEqualTo("123****3456");
+        assertThat(adminResult.getContent().get(0).getPhone()).isEqualTo("010****5678");
+        assertThat(adminResult.getContent().get(0).getEmail()).isEqualTo("a****@test.gov");
+    }
+
+    // ── masking in get by id ────────────────────────────────────────────
+
+    @Test
+    void getCitizenById_masksForAgent_fullyForAdmin() {
+        UUID agentId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        citizen.setNationalId("1234567890123456");
+        citizen.setPhone("01012345678");
+        citizen.setEmail("ahmed@test.gov");
+
+        when(citizenRepository.findById(citizenId)).thenReturn(Optional.of(citizen));
+        when(caseRepository.countVisibleByCitizenId(citizenId, agentId, null)).thenReturn(0L);
+        when(appUserRepository.findById(agentId)).thenReturn(Optional.of(
+                buildUser(agentId, UserRole.AGENT)));
+
+        CitizenResponse agentResponse = citizenService.getCitizenById(citizenId, agentId);
+        assertThat(agentResponse.getNationalId()).isEqualTo("123****3456");
+        assertThat(agentResponse.getPhone()).isEqualTo("010****5678");
+        assertThat(agentResponse.getEmail()).isEqualTo("a****@test.gov");
+        assertThat(agentResponse.getFullName()).isEqualTo("Citizen One"); // never masked
+
+        when(caseRepository.countVisibleByCitizenId(citizenId, null, null)).thenReturn(2L);
+        when(appUserRepository.findById(adminId)).thenReturn(Optional.of(
+                buildUser(adminId, UserRole.ADMIN)));
+
+        CitizenResponse adminResponse = citizenService.getCitizenById(citizenId, adminId);
+        assertThat(adminResponse.getNationalId()).isEqualTo("1234567890123456");
+        assertThat(adminResponse.getPhone()).isEqualTo("01012345678");
+        assertThat(adminResponse.getEmail()).isEqualTo("ahmed@test.gov");
+    }
+
+    // ── masking in profile view ─────────────────────────────────────────
+
+    @Test
+    void getCitizenProfile_masksForAgent_fullForSupervisor() {
+        UUID agentId = UUID.randomUUID();
+        UUID supervisorId = UUID.randomUUID();
+
+        when(citizenRepository.findById(citizenId)).thenReturn(Optional.of(citizen));
+        when(appUserRepository.findById(agentId)).thenReturn(Optional.of(
+                buildUser(agentId, UserRole.AGENT)));
+        when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, agentId, null))
+                .thenReturn(List.of());
+        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+                citizenId, agentId, null, PageRequest.of(0, 5)))
+                .thenReturn(List.of());
+
+        CitizenProfileResponse agentProfile = citizenService.getCitizenProfile(citizenId, agentId);
+        assertThat(agentProfile.getNationalId()).isEqualTo("123****3456");
+        assertThat(agentProfile.getPhone()).isEqualTo("010****5678");
+        assertThat(agentProfile.getEmail()).isEqualTo("c****@test.gov");
+        assertThat(agentProfile.getFullName()).isEqualTo("Citizen One");
+
+        when(appUserRepository.findById(supervisorId)).thenReturn(Optional.of(
+                buildUser(supervisorId, UserRole.SUPERVISOR)));
+        when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, null, null))
+                .thenReturn(List.of());
+        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+                citizenId, null, null, PageRequest.of(0, 5)))
+                .thenReturn(List.of());
+
+        CitizenProfileResponse supervisorProfile = citizenService.getCitizenProfile(citizenId, supervisorId);
+        assertThat(supervisorProfile.getNationalId()).isEqualTo("1234567890123456");
+        assertThat(supervisorProfile.getPhone()).isEqualTo("01012345678");
+        assertThat(supervisorProfile.getEmail()).isEqualTo("citizen@test.gov");
+    }
+
+    private AppUser buildUser(UUID id, UserRole role) {
+        AppUser user = new AppUser();
+        user.setId(id);
+        user.setRole(role);
+        return user;
+    }
 }
+
 
