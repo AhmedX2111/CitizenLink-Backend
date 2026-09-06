@@ -340,4 +340,81 @@ class CaseFlowIntegrationTest {
                         .content(createBody()))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ── US-57: case creation from Citizen 360 ─────────────────────────
+
+    private String createCitizenCaseBody() {
+        return """
+                {
+                  "subject": "Citizen 360 water leak",
+                  "description": "Created from the citizen profile",
+                  "type": "COMPLAINT",
+                  "priority": "HIGH",
+                  "channel": "PHONE",
+                  "categoryId": "%s",
+                  "departmentId": "%s"
+                }
+                """.formatted(category.getId(), department.getId());
+    }
+
+    @Test
+    void agentCreatesCaseFromCitizen360_returns201_andCaseAppearsInProfile() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        MvcResult result = mockMvc.perform(post("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createCitizenCaseBody()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("NEW"))
+                .andExpect(jsonPath("$.caseNumber").isNotEmpty())
+                .andExpect(jsonPath("$.citizenId").value(citizen.getId().toString()))
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        String caseId = body.get("id").asText();
+        String caseNumber = body.get("caseNumber").asText();
+        assertThat(caseNumber).matches("CASE-\\d{4}-\\d{5}");
+
+        // The new case shows up on the same citizen's Citizen 360 profile —
+        // the loop this story describes: profile -> new case -> back to profile.
+        mockMvc.perform(get("/api/v1/citizens/profile/{id}", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recentCases[0].caseNumber").value(caseNumber));
+
+        // And the case-detail page the frontend navigates to exposes the ID.
+        mockMvc.perform(get("/api/v1/cases/{id}", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseNumber").value(caseNumber));
+    }
+
+    @Test
+    void createCaseFromCitizen360_returns404_whenCitizenUnknown() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        mockMvc.perform(post("/api/v1/citizens/{id}/cases", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createCitizenCaseBody()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void createCaseFromCitizen360_returns400_whenBodyInvalid() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        String invalidBody = createCitizenCaseBody().replace("\"Citizen 360 water leak\"", "\"\"");
+        mockMvc.perform(post("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
 }
