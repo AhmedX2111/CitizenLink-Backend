@@ -1,10 +1,13 @@
 package com.ntg.citizenlink.service.impl;
 
 import com.ntg.citizenlink.entities.Case;
+import com.ntg.citizenlink.entities.Citizen;
+import com.ntg.citizenlink.entities.Citizen;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.CaseType;
 import com.ntg.citizenlink.enums.Channel;
 import com.ntg.citizenlink.enums.Priority;
+import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import org.junit.jupiter.api.Test;
@@ -160,12 +163,49 @@ class CsvExportServiceImplTest {
     }
 
     private String csv(OffsetDateTime start, OffsetDateTime end) throws Exception {
+        return csv(start, end, null);
+    }
+
+    private String csv(OffsetDateTime start, OffsetDateTime end, UserRole role) throws Exception {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        csvExportService.exportCasesCsv(bos, start, end);
+        csvExportService.exportCasesCsv(bos, start, end, role);
         return bos.toString(StandardCharsets.UTF_8);
     }
 
     private static int occurrences(String text, String needle) {
         return text.split(needle, -1).length - 1;
+    }
+
+    @Test
+    void exportCasesCsv_admin_seesFullCitizenData() throws Exception {
+        Case c = caseWith("CASE-2026-001");
+        c.setCitizen(buildCitizen("1234567890123456", "01012345678"));
+        mockSinglePage(c);
+
+        String csv = csv(null, null, UserRole.ADMIN);
+
+        assertThat(csv).contains("1234567890123456");
+        assertThat(csv).contains("01012345678");
+    }
+
+    @Test
+    void exportCasesCsv_supervisor_seesMaskedCitizenData() throws Exception {
+        Case c = caseWith("CASE-2026-002");
+        c.setCitizen(buildCitizen("1234567890123456", "01012345678"));
+        mockSinglePage(c);
+
+        String csv = csv(null, null, UserRole.SUPERVISOR);
+
+        assertThat(csv).contains("123****3456");
+        assertThat(csv).contains("010****5678");
+        assertThat(csv).doesNotContain("1234567890123456");
+        assertThat(csv).doesNotContain("01012345678");
+    }
+
+    private Citizen buildCitizen(String nationalId, String phone) {
+        Citizen ci = new Citizen();
+        ci.setNationalId(nationalId);
+        ci.setPhone(phone);
+        return ci;
     }
 }

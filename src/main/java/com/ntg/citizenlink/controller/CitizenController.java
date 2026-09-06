@@ -48,7 +48,9 @@ public class CitizenController {
                 searchTerm != null ? searchTerm.length() : 0,
                 request.getPage(), request.getSize());
 
-        PagedResponse<CitizenResponse> response = citizenService.searchCitizens(request);
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+
+        PagedResponse<CitizenResponse> response = citizenService.searchCitizens(request, userId);
 
         return ResponseEntity.ok(response);
     }

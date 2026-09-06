@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service.impl;
 
+import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
@@ -33,7 +34,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -42,6 +49,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -124,7 +133,7 @@ class CaseServiceImplTest {
     }
 
     private void stubMapper() {
-        when(caseMapper.toResponse(any())).thenReturn(mock(CaseResponse.class));
+        when(caseMapper.toResponse(any(), any())).thenReturn(mock(CaseResponse.class));
     }
 
     private void stubRule(CaseStatus toStatus, boolean requiresComment,
@@ -353,7 +362,7 @@ class CaseServiceImplTest {
         private void stubPersist() {
             when(caseNumberService.generateNext()).thenReturn("CASE-2026-00001");
             when(caseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(caseMapper.toResponse(any())).thenReturn(mock(CaseResponse.class));
+            when(caseMapper.toResponse(any(), any())).thenReturn(mock(CaseResponse.class));
         }
 
         private CreateCaseRequest requestWithAssignment(UUID assignedToUserId) {
@@ -429,4 +438,35 @@ class CaseServiceImplTest {
                     .hasMessageContaining("inactive");
         }
     }
+
+    // ── PII masking in case responses ───────────────────────────────────
+
+    @Test
+    void getCaseById_passesRequesterRoleToMapper() {
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(aCase));
+        when(userRepository.findById(requesterId)).thenReturn(Optional.of(supervisor));
+        when(caseAccessPolicy.canView(aCase, supervisor)).thenReturn(true);
+        CaseResponse mapped = new CaseResponse();
+        mapped.setCaseNumber("CASE-TEST");
+        when(caseMapper.toResponse(aCase, UserRole.SUPERVISOR)).thenReturn(mapped);
+
+        caseService.getCaseById(caseId, requesterId);
+
+        verify(caseMapper).toResponse(aCase, UserRole.SUPERVISOR);
+    }
+
+    @Test
+    void searchCases_passesRequesterRoleToMapper() {
+        Page<Case> page = new PageImpl<>(List.of(aCase));
+        when(caseRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        CaseResponse mapped = new CaseResponse();
+        mapped.setCaseNumber("CASE-TEST");
+        when(caseMapper.toResponse(aCase, UserRole.SUPERVISOR)).thenReturn(mapped);
+        when(userRepository.findById(requesterId)).thenReturn(Optional.of(supervisor));
+
+        caseService.searchCases(new CaseSearchRequest(), requesterId);
+
+        verify(caseMapper).toResponse(aCase, UserRole.SUPERVISOR);
+    }
 }
+

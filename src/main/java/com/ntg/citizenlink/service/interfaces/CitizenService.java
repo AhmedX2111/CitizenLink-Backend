@@ -14,8 +14,9 @@ public interface CitizenService {
     /**
      * Search citizens by name (partial), national ID, or phone.
      * Returns paginated response with PagedResponse wrapper.
+     * Sensitive fields are masked according to the requester's role.
      */
-    PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request);
+    PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request, UUID requesterId);
 
     /**
      * Create a new citizen record.
