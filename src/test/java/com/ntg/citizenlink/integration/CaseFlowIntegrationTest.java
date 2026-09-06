@@ -403,7 +403,10 @@ class CaseFlowIntegrationTest {
         mockMvc.perform(get("/api/v1/citizens/profile/{id}", citizen.getId())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recentCases[0].caseNumber").value(caseNumber));
+                .andExpect(jsonPath("$.recentCases[0].caseNumber").value(caseNumber))
+                .andExpect(jsonPath("$.recentCases[0].departmentNameEn").value(department.getNameEn()))
+                .andExpect(jsonPath("$.recentCases[0].departmentNameAr").value(department.getNameAr()))
+                .andExpect(jsonPath("$.recentCases[0].updatedAt").isNotEmpty());
 
         // And the case-detail page the frontend navigates to exposes the ID.
         mockMvc.perform(get("/api/v1/cases/{id}", caseId)
@@ -525,6 +528,67 @@ class CaseFlowIntegrationTest {
                         .param("categoryId", category.getId().toString())
                         .param("departmentId", department.getId().toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    // ── US-59: citizen case history (paged, ordered by last update) ────
+
+    @Test
+    void caseHistory_ordersByUpdatedAtDesc_andExposesDepartmentNames() throws Exception {
+        AppUser supervisorUser = createUser(UserRole.SUPERVISOR);
+        String token = login(supervisorUser.getUsername());
+
+        String first = createCitizenCase(token);
+        String second = createCitizenCase(token);
+
+        // Touching the first case makes it the most recently UPDATED, so it
+        // must lead the history even though the second was created later.
+        transition(token, first, "ASSIGN", "\"assignedToUserId\":\"" + handler.getId() + "\"");
+
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.content[0].id").value(first))
+                .andExpect(jsonPath("$.content[0].status").value("ASSIGNED"))
+                .andExpect(jsonPath("$.content[1].id").value(second))
+                .andExpect(jsonPath("$.content[0].departmentNameEn").value(department.getNameEn()))
+                .andExpect(jsonPath("$.content[0].departmentNameAr").value(department.getNameAr()))
+                .andExpect(jsonPath("$.content[0].updatedAt").isNotEmpty())
+                .andExpect(jsonPath("$.content[0].caseNumber").isNotEmpty());
+    }
+
+    @Test
+    void caseHistory_handlerSeesOnlyAssignedCases() throws Exception {
+        AppUser handler1 = createUser(UserRole.HANDLER);
+        String supervisorToken = login(supervisor.getUsername());
+
+        String assigned = createCitizenCase(supervisorToken);
+        String other = createCitizenCase(supervisorToken);
+        transition(supervisorToken, assigned, "ASSIGN", "\"assignedToUserId\":\"" + handler1.getId() + "\"");
+        transition(supervisorToken, other, "ASSIGN", "\"assignedToUserId\":\"" + handler.getId() + "\"");
+
+        String handlerToken = login(handler1.getUsername());
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + handlerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].id").value(assigned));
+    }
+
+    @Test
+    void caseHistory_returns404_whenCitizenUnknown() throws Exception {
+        AppUser supervisorUser = createUser(UserRole.SUPERVISOR);
+        String token = login(supervisorUser.getUsername());
+
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }

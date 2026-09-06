@@ -24,6 +24,7 @@ import com.ntg.citizenlink.util.PiiMasker;
 import com.ntg.citizenlink.util.SearchNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -43,6 +44,15 @@ public class CitizenServiceImpl implements CitizenService {
     private final CitizenRepository citizenRepository;
     private final AppUserRepository appUserRepository;
     private final CaseRepository caseRepository;
+
+    /**
+     * US-59: configured size of the Citizen 360 Recent Cases list
+     * (default 5). Field-injected so the rest of the class keeps the
+     * @RequiredArgsConstructor constructor injection. The inline initializer
+     * keeps the default when constructed outside a Spring context (unit tests).
+     */
+    @Value("${app.citizen360.recent-cases-limit:5}")
+    private int recentCasesLimit = 5;
 
     @Override
     @Transactional(readOnly = true)
@@ -211,9 +221,12 @@ public class CitizenServiceImpl implements CitizenService {
                 .mapToLong(e -> e.getValue())
                 .sum();
 
+        // US-59: recent cases are the most recently UPDATED (not created)
+        // cases the requester may see, capped at app.citizen360.recent-cases-limit.
         List<Case> recentCases = caseRepository
-                .findVisibleByCitizenIdOrderByCreatedAtDesc(
-                        id, createdByFilter, assignedToFilter, PageRequest.of(0, 5));
+                .findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                        id, createdByFilter, assignedToFilter,
+                        PageRequest.of(0, recentCasesLimit));
 
         CitizenProfileResponse response = CitizenProfileResponse.builder()
                 .id(citizen.getId())
@@ -284,6 +297,46 @@ public class CitizenServiceImpl implements CitizenService {
     }
 
     /**
+     * US-59: page through a citizen's complete permitted case history, ordered
+     * by last update (updatedAt DESC). Reuses the same role->visibility filter
+     * as getCitizenProfile, so the paged history never shows a case the user
+     * could not already see in the profile. 404 when the citizen is unknown.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<CaseSummaryResponse> getCitizenCaseHistory(
+            UUID citizenId, UUID requesterId, int page, int size) {
+        log.info("Fetching case history for citizen: {} by user: {} (page: {}, size: {})",
+                citizenId, requesterId, page, size);
+
+        citizenRepository.findById(citizenId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", citizenId));
+
+        AppUser requester = appUserRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        VisibilityFilters filters = visibilityFilters(requester);
+
+        // The JPQL query orders by updatedAt DESC itself (with an id
+        // tiebreaker), so the pageable carries no sort.
+        Pageable pageable = PageRequest.of(page, size);
+        List<Case> cases = caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, filters.createdByUserId, filters.assignedToUserId, pageable);
+
+        // L-05: same access-filtered total as the profile, so the history and
+        // the 360 numbers never contradict each other.
+        long total = caseRepository.countVisibleByCitizenId(
+                citizenId, filters.createdByUserId, filters.assignedToUserId);
+
+        int totalPages = (int) Math.ceil((double) total / Math.max(1, size));
+        List<CaseSummaryResponse> content = cases.stream()
+                .map(this::toCaseSummary)
+                .collect(Collectors.toList());
+
+        return new PagedResponse<>(content, page, size, total, totalPages);
+    }
+
+    /**
      * Convert Citizen entity to CitizenResponse DTO.
      *
      * caseCount is always passed in by the caller rather than looked up here —
@@ -336,6 +389,11 @@ public class CitizenServiceImpl implements CitizenService {
                 .createdAt(caseEntity.getCreatedAt())
                 .assignedToName(caseEntity.getAssignedToUser() != null ?
                         caseEntity.getAssignedToUser().getDisplayName() : null)
+                .departmentNameEn(caseEntity.getDepartment() != null ?
+                        caseEntity.getDepartment().getNameEn() : null)
+                .departmentNameAr(caseEntity.getDepartment() != null ?
+                        caseEntity.getDepartment().getNameAr() : null)
+                .updatedAt(caseEntity.getUpdatedAt())
                 .build();
     }
 }

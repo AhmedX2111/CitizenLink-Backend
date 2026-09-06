@@ -1,12 +1,15 @@
 package com.ntg.citizenlink.service.impl;
 
 import com.ntg.citizenlink.dto.agent.response.CitizenProfileResponse;
+import com.ntg.citizenlink.dto.agent.response.CaseSummaryResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenResponse;
+import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.request.CitizenSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Citizen;
+import com.ntg.citizenlink.entities.Department;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.Priority;
 import com.ntg.citizenlink.enums.UserRole;
@@ -23,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -98,7 +102,7 @@ class CitizenServiceImplTest {
         stubLookups();
         when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, null, null))
                 .thenReturn(List.<Object[]>of(statusRow(CaseStatus.NEW, 1L)));
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, null, PageRequest.of(0, 5)))
                 .thenReturn(List.of(aCase(CaseStatus.NEW)));
 
@@ -118,7 +122,7 @@ class CitizenServiceImplTest {
         stubLookups();
         when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, null, null))
                 .thenReturn(List.<Object[]>of());
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, null, PageRequest.of(0, 5)))
                 .thenReturn(List.of());
 
@@ -126,7 +130,7 @@ class CitizenServiceImplTest {
 
         assertThat(response.getTotalCases()).isZero();
         verify(caseRepository).countVisibleByCitizenIdByStatus(citizenId, null, null);
-        verify(caseRepository).findVisibleByCitizenIdOrderByCreatedAtDesc(
+        verify(caseRepository).findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, null, PageRequest.of(0, 5));
     }
 
@@ -136,14 +140,14 @@ class CitizenServiceImplTest {
         stubLookups();
         when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, null, requesterId))
                 .thenReturn(List.<Object[]>of());
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, requesterId, PageRequest.of(0, 5)))
                 .thenReturn(List.of());
 
         citizenService.getCitizenProfile(citizenId, requesterId);
 
         verify(caseRepository).countVisibleByCitizenIdByStatus(citizenId, null, requesterId);
-        verify(caseRepository).findVisibleByCitizenIdOrderByCreatedAtDesc(
+        verify(caseRepository).findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, requesterId, PageRequest.of(0, 5));
     }
 
@@ -153,14 +157,14 @@ class CitizenServiceImplTest {
         stubLookups();
         when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, requesterId, null))
                 .thenReturn(List.<Object[]>of());
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, requesterId, null, PageRequest.of(0, 5)))
                 .thenReturn(List.of());
 
         citizenService.getCitizenProfile(citizenId, requesterId);
 
         verify(caseRepository).countVisibleByCitizenIdByStatus(citizenId, requesterId, null);
-        verify(caseRepository).findVisibleByCitizenIdOrderByCreatedAtDesc(
+        verify(caseRepository).findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, requesterId, null, PageRequest.of(0, 5));
     }
 
@@ -175,7 +179,7 @@ class CitizenServiceImplTest {
                         statusRow(CaseStatus.RESOLVED, 1L),
                         statusRow(CaseStatus.CLOSED, 1L),
                         statusRow(CaseStatus.CANCELLED, 1L)));
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, null, PageRequest.of(0, 5)))
                 .thenReturn(List.of());
 
@@ -191,7 +195,7 @@ class CitizenServiceImplTest {
         stubLookups();
         when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, null, null))
                 .thenReturn(List.<Object[]>of());
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, null, PageRequest.of(0, 5)))
                 .thenReturn(List.of(aCase(CaseStatus.NEW), aCase(CaseStatus.ASSIGNED)));
 
@@ -199,7 +203,7 @@ class CitizenServiceImplTest {
 
         assertThat(response.getRecentCases()).hasSize(2);
         assertThat(response.getRecentCases().get(0).getCaseNumber()).isEqualTo("CASE-NEW");
-        verify(caseRepository).findVisibleByCitizenIdOrderByCreatedAtDesc(
+        verify(caseRepository).findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, null, PageRequest.of(0, 5));
     }
 
@@ -285,6 +289,104 @@ class CitizenServiceImplTest {
         when(appUserRepository.findById(requesterId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> citizenService.getCitizenById(citizenId, requesterId))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── US-59: configurable recent-cases limit + paged case history ─────
+
+    @Test
+    void getCitizenProfile_recentCasesLimitIsConfigurable() {
+        ReflectionTestUtils.setField(citizenService, "recentCasesLimit", 7);
+        stubLookups();
+        when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, null, null))
+                .thenReturn(List.of());
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, null, null, PageRequest.of(0, 7)))
+                .thenReturn(List.of());
+
+        citizenService.getCitizenProfile(citizenId, requesterId);
+
+        verify(caseRepository).findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, null, null, PageRequest.of(0, 7));
+    }
+
+    @Test
+    void getCitizenCaseHistory_adminSeesAllVisibleCases_andMapsPagination() {
+        stubLookups();
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, null, null, PageRequest.of(1, 2)))
+                .thenReturn(List.of(aCase(CaseStatus.NEW), aCase(CaseStatus.RESOLVED)));
+        when(caseRepository.countVisibleByCitizenId(citizenId, null, null)).thenReturn(5L);
+
+        PagedResponse<CaseSummaryResponse> response =
+                citizenService.getCitizenCaseHistory(citizenId, requesterId, 1, 2);
+
+        assertThat(response.getContent()).hasSize(2);
+        assertThat(response.getPage()).isEqualTo(1);
+        assertThat(response.getSize()).isEqualTo(2);
+        assertThat(response.getTotalElements()).isEqualTo(5);
+        assertThat(response.getTotalPages()).isEqualTo(3);
+        assertThat(response.isFirst()).isFalse();
+        assertThat(response.isLast()).isFalse();
+        verify(caseRepository).countVisibleByCitizenId(citizenId, null, null);
+    }
+
+    @Test
+    void getCitizenCaseHistory_mapsDepartmentNamesAndUpdatedAt() {
+        stubLookups();
+        Department dept = new Department();
+        dept.setNameEn("Housing");
+        dept.setNameAr("الإسكان");
+        Case c = aCase(CaseStatus.NEW);
+        c.setDepartment(dept);
+        c.setUpdatedAt(OffsetDateTime.now());
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, null, null, PageRequest.of(0, 20)))
+                .thenReturn(List.of(c));
+        when(caseRepository.countVisibleByCitizenId(citizenId, null, null)).thenReturn(1L);
+
+        PagedResponse<CaseSummaryResponse> response =
+                citizenService.getCitizenCaseHistory(citizenId, requesterId, 0, 20);
+
+        assertThat(response.getContent()).hasSize(1);
+        CaseSummaryResponse summary = response.getContent().get(0);
+        assertThat(summary.getDepartmentNameEn()).isEqualTo("Housing");
+        assertThat(summary.getDepartmentNameAr()).isEqualTo("الإسكان");
+        assertThat(summary.getUpdatedAt()).isEqualTo(c.getUpdatedAt());
+        assertThat(response.getTotalPages()).isEqualTo(1);
+    }
+
+    @Test
+    void getCitizenCaseHistory_handlerRestrictsToAssignedCases() {
+        requester.setRole(UserRole.HANDLER);
+        stubLookups();
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, null, requesterId, PageRequest.of(0, 20)))
+                .thenReturn(List.of(aCase(CaseStatus.ASSIGNED)));
+        when(caseRepository.countVisibleByCitizenId(citizenId, null, requesterId)).thenReturn(1L);
+
+        PagedResponse<CaseSummaryResponse> response =
+                citizenService.getCitizenCaseHistory(citizenId, requesterId, 0, 20);
+
+        assertThat(response.getTotalElements()).isEqualTo(1);
+        verify(caseRepository).findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, null, requesterId, PageRequest.of(0, 20));
+    }
+
+    @Test
+    void getCitizenCaseHistory_throwsWhenCitizenNotFound() {
+        when(citizenRepository.findById(citizenId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> citizenService.getCitizenCaseHistory(citizenId, requesterId, 0, 20))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void getCitizenCaseHistory_throwsWhenRequesterNotFound() {
+        when(citizenRepository.findById(citizenId)).thenReturn(Optional.of(citizen));
+        when(appUserRepository.findById(requesterId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> citizenService.getCitizenCaseHistory(citizenId, requesterId, 0, 20))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -579,7 +681,7 @@ class CitizenServiceImplTest {
                 buildUser(agentId, UserRole.AGENT)));
         when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, agentId, null))
                 .thenReturn(List.of());
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, agentId, null, PageRequest.of(0, 5)))
                 .thenReturn(List.of());
 
@@ -593,7 +695,7 @@ class CitizenServiceImplTest {
                 buildUser(supervisorId, UserRole.SUPERVISOR)));
         when(caseRepository.countVisibleByCitizenIdByStatus(citizenId, null, null))
                 .thenReturn(List.of());
-        when(caseRepository.findVisibleByCitizenIdOrderByCreatedAtDesc(
+        when(caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
                 citizenId, null, null, PageRequest.of(0, 5)))
                 .thenReturn(List.of());
 
