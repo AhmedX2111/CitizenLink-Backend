@@ -3,6 +3,7 @@ package com.ntg.citizenlink.service.interfaces;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
+import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
@@ -18,6 +19,17 @@ public interface CaseService {
      * Creates a new case.
      */
     CaseResponse createCase(CreateCaseRequest request, UUID creatorId);
+
+    /**
+     * US-57: creates a new case for a specific citizen resolved by ID.
+     * Called from the Citizen 360 screen where the citizen is bound to
+     * the URL path and the request body carries no national ID, so the
+     * citizen's masked identity (US-56) is never needed and cannot be
+     * silently replaced. All other business rules (active category and
+     * department, privileged assignment gate, case numbering, audit
+     * history) are identical to {@link #createCase(CreateCaseRequest, UUID)}.
+     */
+    CaseResponse createCitizenCase(UUID citizenId, CreateCitizenCaseRequest request, UUID creatorId);
 
     /**
      * Returns a paginated, filtered list of cases.

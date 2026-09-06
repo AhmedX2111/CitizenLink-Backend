@@ -1,12 +1,15 @@
 package com.ntg.citizenlink.controller;
 
 import com.ntg.citizenlink.dto.agent.request.CitizenSearchRequest;
+import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenRequest;
+import com.ntg.citizenlink.dto.agent.response.CaseResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.security.config.SecurityContextHelper;
+import com.ntg.citizenlink.service.interfaces.CaseService;
 import com.ntg.citizenlink.service.interfaces.CitizenService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,7 @@ import java.util.UUID;
 public class CitizenController {
 
     private final CitizenService citizenService;
+    private final CaseService caseService;
     private final SecurityContextHelper securityContextHelper;
 
     /**
@@ -85,6 +89,26 @@ public class CitizenController {
         CitizenProfileResponse response = citizenService.getCitizenProfile(id, userId);
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * US-57: create a case directly from the Citizen 360 screen.
+     * The citizen is bound to the URL path so the agent's citizen choice
+     * is locked server-side; the (possibly masked) national ID is never
+     * needed in the request body (US-56).
+     */
+    @PostMapping("/{id}/cases")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPERVISOR', 'HANDLER', 'AGENT')")
+    public ResponseEntity<CaseResponse> createCaseForCitizen(
+            @PathVariable UUID id,
+            @Valid @RequestBody CreateCitizenCaseRequest request) {
+        log.info("POST /api/v1/citizens/{}/cases - createdBy: {}",
+                id, securityContextHelper.getAuthenticatedUsername());
+
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        CaseResponse response = caseService.createCitizenCase(id, request, userId);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
