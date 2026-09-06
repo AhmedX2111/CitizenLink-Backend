@@ -2,6 +2,8 @@ package com.ntg.citizenlink.service.impl;
 
 import com.ntg.citizenlink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenResponse;
+import com.ntg.citizenlink.dto.agent.request.CitizenSearchRequest;
+import com.ntg.citizenlink.dto.agent.request.CreateCitizenRequest;
 import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Citizen;
@@ -18,9 +20,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -279,4 +284,194 @@ class CitizenServiceImplTest {
         assertThatThrownBy(() -> citizenService.getCitizenById(citizenId, requesterId))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
+
+    // ── searchCitizens ──────────────────────────────────────────────────
+
+    @Test
+    void searchCitizens_emptyRequest_returnsEmptyPage() {
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm("   ");
+
+        var result = citizenService.searchCitizens(request);
+
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.getTotalElements()).isZero();
+    }
+
+    @Test
+    void searchCitizens_nullSearchTerm_returnsEmptyPage() {
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm(null);
+
+        var result = citizenService.searchCitizens(request);
+
+        assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    void searchCitizens_delegatesToRepositoryWithNormalizedTerms() {
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm("أحمد");
+        request.setPage(0);
+        request.setSize(10);
+
+        Citizen citizen = new Citizen();
+        citizen.setId(UUID.randomUUID());
+        citizen.setFullName("أحمد");
+        citizen.setFullNameNormalized("احمد");
+        citizen.setNationalId("1234567890123456");
+        citizen.setPhone("01012345678");
+
+        Page<Citizen> page = new PageImpl<>(List.of(citizen), PageRequest.of(0, 10), 1);
+        when(citizenRepository.searchCitizens("احمد", "أحمد", null, PageRequest.of(0, 10)))
+                .thenReturn(page);
+        List<Object[]> counts1 = new ArrayList<>();
+        counts1.add(new Object[]{citizen.getId(), 5L});
+        when(citizenRepository.countCasesByCitizenIds(List.of(citizen.getId())))
+                .thenReturn(counts1);
+
+        var result = citizenService.searchCitizens(request);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getFullName()).isEqualTo("أحمد");
+        assertThat(result.getContent().get(0).getCaseCount()).isEqualTo(5);
+    }
+
+    @Test
+    void searchCitizens_phoneSearch_normalizesAndDelegates() {
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm("+2010 123 456 78");
+        request.setPage(0);
+        request.setSize(10);
+
+        Citizen citizen = new Citizen();
+        citizen.setId(UUID.randomUUID());
+        citizen.setFullName("Ahmed");
+        citizen.setFullNameNormalized("ahmed");
+        citizen.setNationalId("1234567890123456");
+        citizen.setPhone("01012345678");
+
+        Page<Citizen> page = new PageImpl<>(List.of(citizen), PageRequest.of(0, 10), 1);
+        when(citizenRepository.searchCitizens("+2010 123 456 78", "+2010 123 456 78", "01012345678", PageRequest.of(0, 10)))
+                .thenReturn(page);
+        List<Object[]> counts2 = new ArrayList<>();
+        counts2.add(new Object[]{citizen.getId(), 5L});
+        when(citizenRepository.countCasesByCitizenIds(List.of(citizen.getId())))
+                .thenReturn(counts2);
+
+        var result = citizenService.searchCitizens(request);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getCaseCount()).isEqualTo(5);
+    }
+
+    @Test
+    void searchCitizens_invalidPhoneFallsBackToNameAndNationalId() {
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm("invalid-phone");
+        request.setPage(0);
+        request.setSize(10);
+
+        Page<Citizen> page = new PageImpl<>(List.of(), PageRequest.of(0, 10), 0);
+        when(citizenRepository.searchCitizens("invalid-phone", "invalid-phone", null, PageRequest.of(0, 10)))
+                .thenReturn(page);
+
+        var result = citizenService.searchCitizens(request);
+
+        assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    void searchCitizens_arabicNameIsNormalized() {
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm("أحمد");
+        request.setPage(0);
+        request.setSize(10);
+
+        Page<Citizen> page = new PageImpl<>(List.of(), PageRequest.of(0, 10), 0);
+        when(citizenRepository.searchCitizens("احمد", "أحمد", null, PageRequest.of(0, 10)))
+                .thenReturn(page);
+
+        citizenService.searchCitizens(request);
+
+        verify(citizenRepository).searchCitizens("احمد", "أحمد", null, PageRequest.of(0, 10));
+    }
+
+    @Test
+    void searchCitizens_batchesCaseCountsInOneQuery() {
+        CitizenSearchRequest request = new CitizenSearchRequest();
+        request.setSearchTerm("test");
+        request.setPage(0);
+        request.setSize(10);
+
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        Citizen c1 = new Citizen();
+        c1.setId(id1);
+        c1.setFullName("Test One");
+        c1.setFullNameNormalized("test one");
+        c1.setNationalId("1111111111111111");
+        c1.setPhone("01011111111");
+        Citizen c2 = new Citizen();
+        c2.setId(id2);
+        c2.setFullName("Test Two");
+        c2.setFullNameNormalized("test two");
+        c2.setNationalId("2222222222222222");
+        c2.setPhone("01022222222");
+
+        Page<Citizen> page = new PageImpl<>(List.of(c1, c2), PageRequest.of(0, 10), 2);
+        when(citizenRepository.searchCitizens("test", "test", null, PageRequest.of(0, 10)))
+                .thenReturn(page);
+        List<Object[]> counts3 = new ArrayList<>();
+        counts3.add(new Object[]{id1, 3L});
+        counts3.add(new Object[]{id2, 1L});
+        when(citizenRepository.countCasesByCitizenIds(List.of(id1, id2)))
+                .thenReturn(counts3);
+
+        var result = citizenService.searchCitizens(request);
+
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent().get(0).getCaseCount()).isEqualTo(3);
+        assertThat(result.getContent().get(1).getCaseCount()).isEqualTo(1);
+    }
+
+    // ── createCitizen normalization ────────────────────────────────────
+
+    @Test
+    void createCitizen_normalizesFullNameAndPhone() {
+        AppUser createdBy = new AppUser();
+        createdBy.setId(UUID.randomUUID());
+        createdBy.setUsername("creator");
+        when(appUserRepository.findById(requesterId)).thenReturn(Optional.of(createdBy));
+
+        when(citizenRepository.existsByNationalId("1234567890123456")).thenReturn(false);
+        when(citizenRepository.existsByPhone("01012345678")).thenReturn(false);
+
+        Citizen saved = new Citizen();
+        saved.setId(UUID.randomUUID());
+        saved.setFullName("أحمد");
+        saved.setFullNameNormalized("احمد");
+        saved.setNationalId("1234567890123456");
+        saved.setPhone("01012345678");
+        saved.setEmail(null);
+        saved.setPreferredLanguage("en");
+        when(citizenRepository.save(org.mockito.ArgumentMatchers.any(Citizen.class)))
+                .thenReturn(saved);
+
+        var request = new CreateCitizenRequest();
+        request.setFullName("أحمد");
+        request.setNationalId("1234567890123456");
+        request.setPhone("+201012345678");
+        request.setEmail("");
+        request.setPreferredLanguage("en");
+
+        CitizenResponse response = citizenService.createCitizen(request, requesterId);
+
+        assertThat(response.getFullName()).isEqualTo("أحمد");
+        verify(citizenRepository).save(org.mockito.ArgumentMatchers.argThat(c ->
+                "01012345678".equals(c.getPhone()) &&
+                "احمد".equals(c.getFullNameNormalized())
+        ));
+    }
 }
+

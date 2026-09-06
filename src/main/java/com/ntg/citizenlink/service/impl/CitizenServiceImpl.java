@@ -16,6 +16,7 @@ import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.repositories.CitizenRepository;
 import com.ntg.citizenlink.service.interfaces.CitizenService;
+import com.ntg.citizenlink.util.SearchNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -55,8 +56,20 @@ public class CitizenServiceImpl implements CitizenService {
 
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
 
+        String rawTerm = request.getSearchTerm().trim();
+
+        String normalizedTerm = SearchNormalizer.normalizeForSearch(rawTerm);
+        String phoneTerm;
+        try {
+            phoneTerm = SearchNormalizer.normalizePhone(rawTerm);
+        } catch (IllegalArgumentException e) {
+            phoneTerm = null;
+        }
+
         Page<Citizen> citizenPage = citizenRepository.searchCitizens(
-                request.getSearchTerm().trim(),
+                normalizedTerm,
+                rawTerm,
+                phoneTerm,
                 pageable
         );
 
@@ -93,6 +106,10 @@ public class CitizenServiceImpl implements CitizenService {
     public CitizenResponse createCitizen(CreateCitizenRequest request, UUID createdByUserId) {
         log.info("Creating new citizen");
 
+        // Normalize phone before duplicate checks so any format of the same
+        // number is detected as a duplicate.
+        String normalizedPhone = SearchNormalizer.normalizePhone(request.getPhone());
+
         // Check for duplicate national ID
         if (citizenRepository.existsByNationalId(request.getNationalId())) {
             log.warn("Citizen creation failed due to duplicate national ID");
@@ -100,7 +117,7 @@ public class CitizenServiceImpl implements CitizenService {
         }
 
         // Check for duplicate phone
-        if (citizenRepository.existsByPhone(request.getPhone())) {
+        if (citizenRepository.existsByPhone(normalizedPhone)) {
             log.warn("Duplicate phone number detected during citizen creation");
             throw new DuplicateResourceException("Citizen", "phone number", request.getPhone());
         }
@@ -124,8 +141,9 @@ public class CitizenServiceImpl implements CitizenService {
         // Create new citizen entity
         Citizen citizen = new Citizen();
         citizen.setFullName(request.getFullName());
+        citizen.setFullNameNormalized(SearchNormalizer.normalizeNameForSearch(request.getFullName()));
         citizen.setNationalId(request.getNationalId());
-        citizen.setPhone(request.getPhone());
+        citizen.setPhone(normalizedPhone);
         citizen.setEmail(email);
         citizen.setPreferredLanguage(request.getPreferredLanguage() != null ? request.getPreferredLanguage() : "en");
         citizen.setCreatedByUser(createdBy);
