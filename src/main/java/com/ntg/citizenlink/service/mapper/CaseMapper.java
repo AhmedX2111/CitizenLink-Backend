@@ -31,6 +31,7 @@ public class CaseMapper {
         r.setStatus(c.getStatus());
         r.setChannel(c.getChannel());
         r.setResolutionSummary(c.getResolutionSummary());
+        r.setDuplicateReason(c.getDuplicateReason());
         r.setDueAt(c.getDueAt());
         r.setCreatedAt(c.getCreatedAt());
         r.setUpdatedAt(c.getUpdatedAt());

@@ -5,6 +5,7 @@ import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
+import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
 import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Category;
@@ -41,6 +42,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -49,13 +51,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link CaseServiceImpl#transitionCase} — the core workflow
@@ -577,6 +579,128 @@ class CaseServiceImplTest {
                     caseService.createCitizenCase(citizen.getId(), citizenCaseRequest(targetAgent.getId()), creatorId))
                     .isInstanceOf(BusinessRuleException.class)
                     .hasMessageContaining("HANDLER role");
+        }
+
+        @Test
+        void createsCase_withDuplicateReason_whenOverrideAcknowledged() {
+            stubLookups(agent);
+            stubPersist();
+
+            CreateCitizenCaseRequest r = citizenCaseRequest(null);
+            r.setDuplicateReason("Citizen insists the leak is still happening");
+
+            caseService.createCitizenCase(citizen.getId(), r, creatorId);
+
+            ArgumentCaptor<Case> caseCaptor = ArgumentCaptor.forClass(Case.class);
+            verify(caseRepository).save(caseCaptor.capture());
+            assertThat(caseCaptor.getValue().getDuplicateReason())
+                    .isEqualTo("Citizen insists the leak is still happening");
+        }
+    }
+
+    @Nested
+    class DuplicateCandidates {
+
+        private UUID targetId;
+        private UUID catId;
+        private UUID deptId;
+        private UUID requesterId;
+
+        @BeforeEach
+        void setUp() {
+            targetId = UUID.randomUUID();
+            catId = UUID.randomUUID();
+            deptId = UUID.randomUUID();
+            requesterId = UUID.randomUUID();
+        }
+
+        private Case candidateCase() {
+            Case c = new Case();
+            c.setId(UUID.randomUUID());
+            c.setCaseNumber("CASE-2026-00010");
+            c.setSubject("Water leak");
+            c.setStatus(CaseStatus.NEW);
+            c.setCreatedAt(OffsetDateTime.now());
+            return c;
+        }
+
+        @Test
+        void returnsCandidates_mappedFromRepository() {
+            when(citizenRepository.findById(targetId)).thenReturn(Optional.of(new Citizen()));
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(user(UserRole.AGENT)));
+            Case candidate = candidateCase();
+            when(caseRepository.findNonFinalDuplicateCandidates(
+                    eq(targetId), eq(catId), eq(deptId), eq(requesterId), isNull()))
+                    .thenReturn(List.of(candidate));
+
+            List<DuplicateCaseCandidateResponse> result =
+                    caseService.findDuplicateCandidates(targetId, catId, deptId, requesterId);
+
+            assertThat(result).hasSize(1);
+            DuplicateCaseCandidateResponse row = result.get(0);
+            assertThat(row.id()).isEqualTo(candidate.getId());
+            assertThat(row.caseNumber()).isEqualTo("CASE-2026-00010");
+            assertThat(row.subject()).isEqualTo("Water leak");
+            assertThat(row.status()).isEqualTo(CaseStatus.NEW);
+            assertThat(row.createdAt()).isEqualTo(candidate.getCreatedAt());
+        }
+
+        @Test
+        void agentScope_usesCreatedByFilter_only() {
+            when(citizenRepository.findById(targetId)).thenReturn(Optional.of(new Citizen()));
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(user(UserRole.AGENT)));
+            when(caseRepository.findNonFinalDuplicateCandidates(
+                    eq(targetId), eq(catId), eq(deptId), eq(requesterId), isNull()))
+                    .thenReturn(List.of());
+
+            List<DuplicateCaseCandidateResponse> result =
+                    caseService.findDuplicateCandidates(targetId, catId, deptId, requesterId);
+
+            assertThat(result).isEmpty();
+            // The AGENT must only see candidates they created themselves — the
+            // createdBy filter carries the requester id, assignedTo stays null.
+            verify(caseRepository).findNonFinalDuplicateCandidates(
+                    eq(targetId), eq(catId), eq(deptId), eq(requesterId), isNull());
+        }
+
+        @Test
+        void handlerScope_usesAssignedToFilter_only() {
+            when(citizenRepository.findById(targetId)).thenReturn(Optional.of(new Citizen()));
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(user(UserRole.HANDLER)));
+            when(caseRepository.findNonFinalDuplicateCandidates(
+                    eq(targetId), eq(catId), eq(deptId), isNull(), eq(requesterId)))
+                    .thenReturn(List.of());
+
+            List<DuplicateCaseCandidateResponse> result =
+                    caseService.findDuplicateCandidates(targetId, catId, deptId, requesterId);
+
+            assertThat(result).isEmpty();
+            verify(caseRepository).findNonFinalDuplicateCandidates(
+                    eq(targetId), eq(catId), eq(deptId), isNull(), eq(requesterId));
+        }
+
+        @Test
+        void supervisorScope_seesAll() {
+            when(citizenRepository.findById(targetId)).thenReturn(Optional.of(new Citizen()));
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(user(UserRole.SUPERVISOR)));
+            when(caseRepository.findNonFinalDuplicateCandidates(
+                    eq(targetId), eq(catId), eq(deptId), isNull(), isNull()))
+                    .thenReturn(List.of());
+
+            caseService.findDuplicateCandidates(targetId, catId, deptId, requesterId);
+
+            verify(caseRepository).findNonFinalDuplicateCandidates(
+                    eq(targetId), eq(catId), eq(deptId), isNull(), isNull());
+        }
+
+        @Test
+        void throwsNotFound_whenCitizenUnknown() {
+            when(citizenRepository.findById(targetId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> caseService.findDuplicateCandidates(targetId, catId, deptId, requesterId))
+                    .isInstanceOf(ResourceNotFoundException.class);
+
+            verify(caseRepository, never()).findNonFinalDuplicateCandidates(any(), any(), any(), any(), any());
         }
     }
 

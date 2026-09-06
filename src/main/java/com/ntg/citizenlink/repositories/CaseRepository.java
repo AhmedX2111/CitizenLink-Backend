@@ -132,6 +132,37 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
             @Param("assignedToUserId") UUID assignedToUserId
     );
 
+    // ── US-58: duplicate-candidate check for Citizen 360 case creation ──
+    /**
+     * The citizen's non-final cases that could be duplicates of a new case
+     * being created for the category/department being selected.
+     *
+     * Documented rule (docs/US-58-duplicate-case-rule.md):
+     *   - non-final = status NOT IN (RESOLVED, CLOSED, CANCELLED)
+     *   - "same or related category" = same category OR same department
+     *     (the category model is flat — no hierarchy)
+     *   - same requester-visibility restriction as the Citizen 360
+     *     recent-cases list, so the warning never surfaces a case the
+     *     requester could not open anyway.
+     */
+    @Query("""
+        SELECT c
+        FROM Case c
+        WHERE c.citizen.id = :citizenId
+          AND c.status NOT IN ('RESOLVED', 'CLOSED', 'CANCELLED')
+          AND (c.category.id = :categoryId OR c.department.id = :departmentId)
+          AND (:createdByUserId IS NULL OR c.createdByUser.id = :createdByUserId)
+          AND (:assignedToUserId IS NULL OR c.assignedToUser.id = :assignedToUserId)
+        ORDER BY c.createdAt DESC, c.id DESC
+        """)
+    List<Case> findNonFinalDuplicateCandidates(
+            @Param("citizenId") UUID citizenId,
+            @Param("categoryId") UUID categoryId,
+            @Param("departmentId") UUID departmentId,
+            @Param("createdByUserId") UUID createdByUserId,
+            @Param("assignedToUserId") UUID assignedToUserId
+    );
+
     // ── US-04: KPI counts ──────────────────────────────────────────────
     /**
      * Open cases = NEW, ASSIGNED, IN_PROGRESS (per confirmed business rule).

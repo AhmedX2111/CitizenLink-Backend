@@ -51,4 +51,13 @@ public class CreateCitizenCaseRequest {
 
     private UUID assignedToUserId;
     private OffsetDateTime dueAt;
+
+    /**
+     * Optional — US-58: the agent's short reason for creating this case
+     * despite an active possible-duplicate warning. Never required on the
+     * server side (the client makes it mandatory after a warning was
+     * shown); only the length cap is enforced here.
+     */
+    @Size(max = 500, message = "Duplicate reason must not exceed 500 characters")
+    private String duplicateReason;
 }

@@ -6,6 +6,7 @@ import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
+import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.response.StatusHistoryResponse;
 
@@ -30,6 +31,18 @@ public interface CaseService {
      * history) are identical to {@link #createCase(CreateCaseRequest, UUID)}.
      */
     CaseResponse createCitizenCase(UUID citizenId, CreateCitizenCaseRequest request, UUID creatorId);
+
+    /**
+     * US-58: preflight check before creating a case from Citizen 360.
+     * Lists the citizen's non-final cases whose category or department
+     * matches the one being selected for the new case (documented rule —
+     * see docs/US-58-duplicate-case-rule.md). Results always carry the
+     * requester's normal case-visibility restriction, so the warning never
+     * surfaces a case the requester could not open anyway. Read-only and
+     * never blocks creation.
+     */
+    List<DuplicateCaseCandidateResponse> findDuplicateCandidates(UUID citizenId, UUID categoryId,
+                                                                 UUID departmentId, UUID requesterId);
 
     /**
      * Returns a paginated, filtered list of cases.
