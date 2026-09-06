@@ -19,7 +19,8 @@ import java.util.UUID;
         @UniqueConstraint(name = "uq_citizen_email",       columnNames = "email")
     },
     indexes = {
-        @Index(name = "idx_citizen_full_name", columnList = "full_name")
+        @Index(name = "idx_citizen_full_name", columnList = "full_name"),
+        @Index(name = "idx_citizen_full_name_normalized", columnList = "full_name_normalized")
     }
 )
 @Setter
@@ -35,6 +36,9 @@ public class Citizen {
 
     @Column(name = "full_name", nullable = false, length = 200)
     private String fullName;
+
+    @Column(name = "full_name_normalized", nullable = true, length = 200)
+    private String fullNameNormalized;
 
     /**
      * Government-issued national identifier. Unique and required.
