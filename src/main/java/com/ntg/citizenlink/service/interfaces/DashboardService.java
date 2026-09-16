@@ -5,6 +5,7 @@ import com.ntg.citizenlink.dto.agent.response.InboxCaseResponse;
 import com.ntg.citizenlink.dto.agent.response.InboxCountsResponse;
 import com.ntg.citizenlink.dto.agent.response.MyOpenCaseResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
+import com.ntg.citizenlink.dto.agent.response.WorkloadIndicatorsResponse;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.InboxSort;
 import com.ntg.citizenlink.enums.Priority;
@@ -65,4 +66,21 @@ public interface DashboardService {
      * count). Dimensions overlap by design (see InboxCountsResponse).
      */
     InboxCountsResponse getMyInboxCounts(UUID userId);
+
+    /**
+     * US-54: role-aware workload indicators for the dashboard.
+     *
+     * HANDLER    — PERSONAL scope: counts of the handler's own assigned
+     *              (live), overdue and due-today cases; each indicator's
+     *              link is the matching /my-inbox quick filter.
+     * SUPERVISOR — TEAM scope: counts of team-wide overdue, due-today and
+     *              unassigned (live) cases; each indicator's link is the
+     *              matching /cases quick filter.
+     *
+     * Counts respect the caller's visibility permissions: a handler only
+     * ever sees their own cases; a supervisor sees the whole queue. Any
+     * other role is rejected (403) at the controller. Failures surface as
+     * the standard error envelope so the UI can offer a visible retry.
+     */
+    WorkloadIndicatorsResponse getWorkloadIndicators(UUID userId);
 }

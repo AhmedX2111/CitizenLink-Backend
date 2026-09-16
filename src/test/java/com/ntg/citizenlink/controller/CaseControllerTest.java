@@ -1,6 +1,8 @@
 package com.ntg.citizenlink.controller;
 
 import com.ntg.citizenlink.config.TestSecurityConfig;
+import com.ntg.citizenlink.dto.agent.request.BulkReassignRequest;
+import com.ntg.citizenlink.dto.agent.response.BulkReassignResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
@@ -402,5 +404,150 @@ class CaseControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
         verify(caseService, never()).transitionCase(any(), any(), any());
+    }
+
+    // ---------------------------------------------------------------------
+    // POST /api/v1/cases/bulk-reassign (US-53)
+    // ---------------------------------------------------------------------
+
+    private static final UUID HANDLER_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
+
+    private static final String VALID_BULK_REASSIGN_BODY = """
+            {
+              "caseIds": ["22222222-2222-2222-2222-222222222222"],
+              "assignedToUserId": "55555555-5555-5555-5555-555555555555",
+              "comment": "workload balancing"
+            }
+            """;
+
+    private BulkReassignResponse bulkReassignResponse(int succeeded, int failed) {
+        BulkReassignResponse r = new BulkReassignResponse();
+        r.setTotalRequested(succeeded + failed);
+        r.setSucceeded(succeeded);
+        r.setFailed(failed);
+        BulkReassignResponse.CaseResult ok = new BulkReassignResponse.CaseResult();
+        ok.setCaseId(CASE_ID);
+        ok.setCaseNumber("CASE-2026-00001");
+        ok.setSuccess(true);
+        r.getResults().add(ok);
+        return r;
+    }
+
+    @Test
+    @WithMockUser(roles = "SUPERVISOR")
+    void bulkReassign_returns200_asSupervisor() throws Exception {
+        when(securityContextHelper.getAuthenticatedUserId()).thenReturn(USER_ID);
+        when(caseService.bulkReassignCases(any(), eq(USER_ID)))
+                .thenReturn(bulkReassignResponse(1, 0));
+
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BULK_REASSIGN_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalRequested").value(1))
+                .andExpect(jsonPath("$.succeeded").value(1))
+                .andExpect(jsonPath("$.failed").value(0))
+                .andExpect(jsonPath("$.results[0].caseNumber").value("CASE-2026-00001"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void bulkReassign_returns200_asAdmin() throws Exception {
+        when(securityContextHelper.getAuthenticatedUserId()).thenReturn(USER_ID);
+        when(caseService.bulkReassignCases(any(), eq(USER_ID)))
+                .thenReturn(bulkReassignResponse(1, 0));
+
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BULK_REASSIGN_BODY))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "HANDLER")
+    void bulkReassign_returns403_asHandler() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BULK_REASSIGN_BODY))
+                .andExpect(status().isForbidden());
+
+        verify(caseService, never()).bulkReassignCases(any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "AGENT")
+    void bulkReassign_returns403_asAgent() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BULK_REASSIGN_BODY))
+                .andExpect(status().isForbidden());
+
+        verify(caseService, never()).bulkReassignCases(any(), any());
+    }
+
+    @Test
+    void bulkReassign_returns401_whenUnauthenticated() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BULK_REASSIGN_BODY))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "SUPERVISOR")
+    void bulkReassign_returns400_whenCaseIdsMissing() throws Exception {
+        String body = """
+                {
+                  "assignedToUserId": "55555555-5555-5555-5555-555555555555",
+                  "comment": "workload balancing"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(caseService, never()).bulkReassignCases(any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "SUPERVISOR")
+    void bulkReassign_returns400_whenTargetMissing() throws Exception {
+        String body = """
+                {
+                  "caseIds": ["22222222-2222-2222-2222-222222222222"],
+                  "comment": "workload balancing"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(caseService, never()).bulkReassignCases(any(), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "SUPERVISOR")
+    void bulkReassign_returns400_whenCommentBlank() throws Exception {
+        String body = """
+                {
+                  "caseIds": ["22222222-2222-2222-2222-222222222222"],
+                  "assignedToUserId": "55555555-5555-5555-5555-555555555555",
+                  "comment": "  "
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/cases/bulk-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(caseService, never()).bulkReassignCases(any(), any());
     }
 }

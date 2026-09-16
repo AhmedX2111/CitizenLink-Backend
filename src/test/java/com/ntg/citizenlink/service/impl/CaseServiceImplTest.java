@@ -1,8 +1,10 @@
 package com.ntg.citizenlink.service.impl;
 
-import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
+import com.ntg.citizenlink.dto.agent.request.BulkReassignRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
+import com.ntg.citizenlink.dto.agent.response.BulkReassignResponse;
+import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
 import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
@@ -83,6 +85,7 @@ class CaseServiceImplTest {
     @Mock private CaseMapper caseMapper;
     @Mock private CaseAccessPolicy caseAccessPolicy;
     @Mock private CaseWorkflowService caseWorkflowService;
+    @Mock private com.ntg.citizenlink.config.AppTimeZone appTimeZone;
 
     @InjectMocks private CaseServiceImpl caseService;
 
@@ -319,6 +322,197 @@ class CaseServiceImplTest {
             CaseTransitionRequest r = request(WorkflowAction.START);
             assertThatThrownBy(() -> caseService.transitionCase(caseId, requesterId, r))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Nested
+    class BulkReassign {
+
+        @BeforeEach
+        void nameHandlersDistinctly() {
+            oldHandler.setDisplayName("Handler A");
+            handler.setDisplayName("Handler B");
+        }
+
+        private BulkReassignRequest bulkRequest(List<UUID> caseIds, UUID targetId) {
+            BulkReassignRequest r = new BulkReassignRequest();
+            r.setCaseIds(caseIds);
+            r.setAssignedToUserId(targetId);
+            r.setComment("workload balancing");
+            return r;
+        }
+
+        private void stubRequesterAndTarget() {
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(supervisor));
+            when(userRepository.findById(handler.getId())).thenReturn(Optional.of(handler));
+        }
+
+        private void stubCaseLookup() {
+            when(caseRepository.findById(caseId)).thenReturn(Optional.of(aCase));
+        }
+
+        private void stubSave() {
+            when(caseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        private void stubReassignAllowed() {
+            CaseTransitionRule reassignRule = new CaseTransitionRule(
+                    WorkflowAction.REASSIGN, CaseStatus.IN_PROGRESS, CaseStatus.IN_PROGRESS,
+                    Set.of(UserRole.SUPERVISOR, UserRole.ADMIN),
+                    "cases.actions.reassign", true, false);
+            when(caseWorkflowService.resolveTransition(any(), any(), any())).thenReturn(reassignRule);
+        }
+
+        @Test
+        void supervisorReassignsSingleCase_swapsHandlerAndWritesTimelineEntry() {
+            stubRequesterAndTarget();
+            stubCaseLookup();
+            stubSave();
+            stubReassignAllowed();
+
+            BulkReassignResponse response = caseService.bulkReassignCases(
+                    bulkRequest(List.of(caseId), handler.getId()), requesterId);
+
+            assertThat(response.getTotalRequested()).isEqualTo(1);
+            assertThat(response.getSucceeded()).isEqualTo(1);
+            assertThat(response.getFailed()).isZero();
+            assertThat(response.getResults()).hasSize(1);
+            assertThat(response.getResults().get(0).isSuccess()).isTrue();
+            assertThat(response.getResults().get(0).getCaseNumber()).isEqualTo("CASE-2026-00001");
+            assertThat(response.getResults().get(0).getErrorCode()).isNull();
+
+            ArgumentCaptor<Case> caseCaptor = ArgumentCaptor.forClass(Case.class);
+            verify(caseRepository).save(caseCaptor.capture());
+            assertThat(caseCaptor.getValue().getAssignedToUser()).isEqualTo(handler);
+            // REASSIGN leaves the status unchanged
+            assertThat(caseCaptor.getValue().getStatus()).isEqualTo(CaseStatus.IN_PROGRESS);
+
+            // AUD-01: timeline entry records actor, previous and new assignee
+            ArgumentCaptor<com.ntg.citizenlink.entities.StatusHistory> historyCaptor =
+                    ArgumentCaptor.forClass(com.ntg.citizenlink.entities.StatusHistory.class);
+            verify(statusHistoryRepository).save(historyCaptor.capture());
+            com.ntg.citizenlink.entities.StatusHistory h = historyCaptor.getValue();
+            assertThat(h.getAction()).isEqualTo(WorkflowAction.REASSIGN);
+            assertThat(h.getFromStatus()).isEqualTo(CaseStatus.IN_PROGRESS);
+            assertThat(h.getToStatus()).isEqualTo(CaseStatus.IN_PROGRESS);
+            assertThat(h.getChangedByUser()).isEqualTo(supervisor);
+            assertThat(h.getComment())
+                    .contains("Reassigned from Handler A")
+                    .contains("to Handler B")
+                    .contains("workload balancing");
+        }
+
+        @Test
+        void mixedBatch_reportsSuccessAndFailurePerCase_withoutSkipping() {
+            UUID ineligibleId = UUID.randomUUID();
+            Case closedCase = new Case();
+            closedCase.setId(ineligibleId);
+            closedCase.setCaseNumber("CASE-2026-00009");
+            closedCase.setStatus(CaseStatus.CLOSED);
+            closedCase.setAssignedToUser(oldHandler);
+            closedCase.setCreatedByUser(user(UserRole.AGENT));
+
+            stubRequesterAndTarget();
+            stubSave();
+            when(caseRepository.findById(caseId)).thenReturn(Optional.of(aCase));
+            when(caseRepository.findById(ineligibleId)).thenReturn(Optional.of(closedCase));
+
+            CaseTransitionRule reassignRule = new CaseTransitionRule(
+                    WorkflowAction.REASSIGN, CaseStatus.IN_PROGRESS, CaseStatus.IN_PROGRESS,
+                    Set.of(UserRole.SUPERVISOR, UserRole.ADMIN),
+                    "cases.actions.reassign", true, false);
+            when(caseWorkflowService.resolveTransition(any(), any(), any())).thenReturn(reassignRule);
+            when(caseWorkflowService.resolveTransition(eq(CaseStatus.CLOSED), any(), any()))
+                    .thenThrow(new IllegalTransitionException("INVALID_TRANSITION",
+                            "Action REASSIGN is not valid from status CLOSED"));
+
+            BulkReassignResponse response = caseService.bulkReassignCases(
+                    bulkRequest(List.of(caseId, ineligibleId), handler.getId()), requesterId);
+
+            assertThat(response.getTotalRequested()).isEqualTo(2);
+            assertThat(response.getSucceeded()).isEqualTo(1);
+            assertThat(response.getFailed()).isEqualTo(1);
+
+            BulkReassignResponse.CaseResult ok = response.getResults().get(0);
+            assertThat(ok.isSuccess()).isTrue();
+            assertThat(ok.getCaseNumber()).isEqualTo("CASE-2026-00001");
+
+            BulkReassignResponse.CaseResult bad = response.getResults().get(1);
+            assertThat(bad.isSuccess()).isFalse();
+            assertThat(bad.getErrorCode()).isEqualTo("INVALID_TRANSITION");
+            assertThat(bad.getMessage()).contains("CLOSED");
+        }
+
+        @Test
+        void unknownCaseId_reportedAsNotFound_notSilentlySkipped() {
+            UUID missingId = UUID.randomUUID();
+            stubRequesterAndTarget();
+
+            BulkReassignResponse response = caseService.bulkReassignCases(
+                    bulkRequest(List.of(missingId), handler.getId()), requesterId);
+
+            assertThat(response.getFailed()).isEqualTo(1);
+            assertThat(response.getResults()).hasSize(1);
+            assertThat(response.getResults().get(0).isSuccess()).isFalse();
+            assertThat(response.getResults().get(0).getErrorCode()).isEqualTo("NOT_FOUND");
+        }
+
+        @Test
+        void duplicateCaseIds_collapsedToSingleResult() {
+            stubRequesterAndTarget();
+            stubCaseLookup();
+            stubSave();
+            stubReassignAllowed();
+
+            BulkReassignResponse response = caseService.bulkReassignCases(
+                    bulkRequest(List.of(caseId, caseId), handler.getId()), requesterId);
+
+            assertThat(response.getTotalRequested()).isEqualTo(1);
+            assertThat(response.getResults()).hasSize(1);
+            assertThat(response.getSucceeded()).isEqualTo(1);
+            verify(caseRepository, times(1)).save(any());
+        }
+
+        @Test
+        void handlerCaller_isRejectedByRoleGate() {
+            AppUser handlerUser = user(UserRole.HANDLER);
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(handlerUser));
+
+            assertThatThrownBy(() -> caseService.bulkReassignCases(
+                    bulkRequest(List.of(caseId), handler.getId()), requesterId))
+                    .isInstanceOf(IllegalTransitionException.class)
+                    .extracting("code").isEqualTo("ROLE_NOT_ALLOWED");
+
+            verify(caseRepository, never()).save(any());
+        }
+
+        @Test
+        void inactiveTarget_isRejectedBeforeAnyCaseIsTouched() {
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(supervisor));
+            AppUser inactive = user(UserRole.HANDLER);
+            inactive.setActive(false);
+            when(userRepository.findById(inactive.getId())).thenReturn(Optional.of(inactive));
+
+            assertThatThrownBy(() -> caseService.bulkReassignCases(
+                    bulkRequest(List.of(caseId), inactive.getId()), requesterId))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("inactive");
+
+            verify(caseRepository, never()).save(any());
+        }
+
+        @Test
+        void nonHandlerTarget_isRejectedBeforeAnyCaseIsTouched() {
+            when(userRepository.findById(requesterId)).thenReturn(Optional.of(supervisor));
+            AppUser agent = user(UserRole.AGENT);
+            when(userRepository.findById(agent.getId())).thenReturn(Optional.of(agent));
+
+            assertThatThrownBy(() -> caseService.bulkReassignCases(
+                    bulkRequest(List.of(caseId), agent.getId()), requesterId))
+                    .isInstanceOf(IllegalTransitionException.class)
+                    .extracting("code").isEqualTo("INVALID_REASSIGNMENT");
+
+            verify(caseRepository, never()).save(any());
         }
     }
 

@@ -5,10 +5,14 @@ import com.ntg.citizenlink.dto.agent.response.InboxCaseResponse;
 import com.ntg.citizenlink.dto.agent.response.InboxCountsResponse;
 import com.ntg.citizenlink.dto.agent.response.MyOpenCaseResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
+import com.ntg.citizenlink.dto.agent.response.WorkloadIndicatorsResponse;
+import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.InboxSort;
 import com.ntg.citizenlink.enums.Priority;
+import com.ntg.citizenlink.exception.ResourceNotFoundException;
+import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.repositories.InboxSpecification;
 import com.ntg.citizenlink.service.interfaces.DashboardService;
@@ -24,6 +28,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +39,7 @@ import java.util.UUID;
 public class DashboardServiceImpl implements DashboardService {
 
     private final CaseRepository caseRepository;
+    private final AppUserRepository userRepository;
 
     /**
      * US-50: "today" for the due-today quick filter is resolved in this zone —
@@ -44,8 +50,10 @@ public class DashboardServiceImpl implements DashboardService {
     private final ZoneId zoneId;
 
     public DashboardServiceImpl(CaseRepository caseRepository,
+                                AppUserRepository userRepository,
                                 @Value("${app.time-zone:}") String timeZone) {
         this.caseRepository = caseRepository;
+        this.userRepository = userRepository;
         this.zoneId = (timeZone == null || timeZone.isBlank()) ? ZoneId.systemDefault() : ZoneId.of(timeZone);
     }
 
@@ -183,6 +191,101 @@ public class DashboardServiceImpl implements DashboardService {
                 .overdue(overdue, now)
                 .dueToday(dueToday, todayStart, todayEnd)
                 .build());
+    }
+
+    /**
+     * US-54 (DSH-04, DSH-05): role-aware workload indicators.
+     *
+     * HANDLER — PERSONAL scope. Each count is the same base inbox
+     * specification used by getMyInboxCounts (assignedToUser = caller,
+     * final states excluded) plus one dimension, so every number is exactly
+     * what the linked /my-inbox quick filter returns:
+     *   ASSIGNED  = all        → /api/v1/dashboard/my-inbox
+     *   OVERDUE   = overdue    → /api/v1/dashboard/my-inbox?overdue=true
+     *   DUE_TODAY = dueToday   → /api/v1/dashboard/my-inbox?dueToday=true
+     *
+     * SUPERVISOR — TEAM scope. Counts run over the whole queue (the
+     * supervisor's own visibility already covers every case) with the same
+     * final-state exclusion, via the US-54 case-list quick filters:
+     *   OVERDUE    → /api/v1/cases?overdue=true
+     *   DUE_TODAY  → /api/v1/cases?dueToday=true
+     *   UNASSIGNED → /api/v1/cases?unassigned=true
+     * An ASSIGNED indicator makes no sense team-wide (it equals openCases on
+     * the summary KPI card), so supervisors get UNASSIGNED instead — the
+     * pressure signal the user story asks for.
+     *
+     * All counts go through countCaseList, which applies the identical
+     * CaseSpecification predicates the /api/v1/cases list uses — count and
+     * linked list can never diverge.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public WorkloadIndicatorsResponse getWorkloadIndicators(UUID userId) {
+        AppUser requester = userRepository.findById(userId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", userId));
+
+        OffsetDateTime now = OffsetDateTime.now(zoneId);
+        OffsetDateTime todayStart = LocalDate.now(zoneId).atStartOfDay(zoneId).toOffsetDateTime();
+        OffsetDateTime todayEnd = todayStart.plusDays(1);
+
+        List<WorkloadIndicatorsResponse.Indicator> indicators = new ArrayList<>();
+
+        switch (requester.getRole()) {
+            case HANDLER -> {
+                indicators.add(new WorkloadIndicatorsResponse.Indicator(
+                        WorkloadIndicatorsResponse.Key.ASSIGNED,
+                        countInbox(userId, null, null, null, null, now, todayStart, todayEnd),
+                        "/api/v1/dashboard/my-inbox"));
+                indicators.add(new WorkloadIndicatorsResponse.Indicator(
+                        WorkloadIndicatorsResponse.Key.OVERDUE,
+                        countInbox(userId, true, null, null, null, now, todayStart, todayEnd),
+                        "/api/v1/dashboard/my-inbox?overdue=true"));
+                indicators.add(new WorkloadIndicatorsResponse.Indicator(
+                        WorkloadIndicatorsResponse.Key.DUE_TODAY,
+                        countInbox(userId, null, true, null, null, now, todayStart, todayEnd),
+                        "/api/v1/dashboard/my-inbox?dueToday=true"));
+            }
+            case SUPERVISOR, ADMIN -> {
+                indicators.add(new WorkloadIndicatorsResponse.Indicator(
+                        WorkloadIndicatorsResponse.Key.OVERDUE,
+                        countCaseList(true, null, null, now, todayStart, todayEnd),
+                        "/api/v1/cases?overdue=true"));
+                indicators.add(new WorkloadIndicatorsResponse.Indicator(
+                        WorkloadIndicatorsResponse.Key.DUE_TODAY,
+                        countCaseList(null, true, null, now, todayStart, todayEnd),
+                        "/api/v1/cases?dueToday=true"));
+                indicators.add(new WorkloadIndicatorsResponse.Indicator(
+                        WorkloadIndicatorsResponse.Key.UNASSIGNED,
+                        countCaseList(null, null, true, now, todayStart, todayEnd),
+                        "/api/v1/cases?unassigned=true"));
+            }
+            default -> throw new IllegalStateException(
+                    "Unexpected role for workload indicators: " + requester.getRole());
+        }
+
+        WorkloadIndicatorsResponse.Scope scope =
+                requester.getRole() == com.ntg.citizenlink.enums.UserRole.HANDLER
+                        ? WorkloadIndicatorsResponse.Scope.PERSONAL
+                        : WorkloadIndicatorsResponse.Scope.TEAM;
+
+        return new WorkloadIndicatorsResponse(scope, indicators);
+    }
+
+    /**
+     * US-54: team-scope count for one workload dimension, evaluated with the
+     * exact CaseSpecification the /api/v1/cases list uses (supervisor
+     * visibility = no restriction) so the count always matches the linked
+     * filtered list.
+     */
+    private long countCaseList(Boolean overdue, Boolean dueToday, Boolean unassigned,
+                               OffsetDateTime now, OffsetDateTime todayStart, OffsetDateTime todayEnd) {
+        com.ntg.citizenlink.dto.agent.request.CaseSearchRequest filter =
+                new com.ntg.citizenlink.dto.agent.request.CaseSearchRequest();
+        filter.setOverdue(overdue);
+        filter.setDueToday(dueToday);
+        filter.setUnassigned(unassigned);
+        return caseRepository.count(new com.ntg.citizenlink.repositories.CaseSpecification(
+                filter, null, null, now, todayStart, todayEnd));
     }
 
     /**

@@ -5,6 +5,7 @@ import com.ntg.citizenlink.dto.agent.response.InboxCaseResponse;
 import com.ntg.citizenlink.dto.agent.response.InboxCountsResponse;
 import com.ntg.citizenlink.dto.agent.response.MyOpenCaseResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
+import com.ntg.citizenlink.dto.agent.response.WorkloadIndicatorsResponse;
 import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.InboxSort;
 import com.ntg.citizenlink.enums.Priority;
@@ -25,12 +26,14 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Dashboard endpoints backing US-04, US-05, US-06, US-49, US-50 and US-51.
+ * Dashboard endpoints backing US-04, US-05, US-06, US-49, US-50, US-51
+ * and US-54.
  *
  *   GET /api/v1/dashboard/summary         — KPI cards + status chart (any authenticated user)
  *   GET /api/v1/dashboard/my-open-cases   — HANDLER-only widget (US-06)
  *   GET /api/v1/dashboard/my-inbox        — HANDLER-only paged work inbox (US-49/50/51)
  *   GET /api/v1/dashboard/my-inbox/counts — HANDLER-only quick-filter badge counts (US-50)
+ *   GET /api/v1/dashboard/workload        — HANDLER/SUPERVISOR workload indicators (US-54)
  */
 @Slf4j
 @RestController
@@ -147,5 +150,30 @@ public class DashboardController {
     public ResponseEntity<InboxCountsResponse> getMyInboxCounts() {
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         return ResponseEntity.ok(dashboardService.getMyInboxCounts(userId));
+    }
+
+    /**
+     * US-54 (DSH-04, DSH-05). Role-aware workload indicators for the
+     * dashboard, HANDLER and SUPERVISOR only.
+     *
+     * HANDLER    — PERSONAL scope: assigned / overdue / dueToday counts of
+     *              their own cases; links point at the matching /my-inbox
+     *              quick filter.
+     * SUPERVISOR — TEAM scope: overdue / dueToday / unassigned counts across
+     *              the queue; links point at the matching /api/v1/cases
+     *              quick filter (visibility already restricted to what the
+     *              supervisor may see).
+     *
+     * Every count is computed with the same predicates as its linked list,
+     * so clicking an indicator always reproduces the number shown. Errors
+     * surface through the standard {code, message} envelope — the frontend
+     * renders a visible retry affordance on that response instead of
+     * failing silently.
+     */
+    @GetMapping("/workload")
+    @PreAuthorize("hasAnyRole('HANDLER', 'SUPERVISOR', 'ADMIN')")
+    public ResponseEntity<WorkloadIndicatorsResponse> getWorkloadIndicators() {
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        return ResponseEntity.ok(dashboardService.getWorkloadIndicators(userId));
     }
 }

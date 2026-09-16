@@ -3,6 +3,7 @@ package com.ntg.citizenlink.service.impl;
 import com.ntg.citizenlink.exception.BusinessRuleException;
 import com.ntg.citizenlink.exception.IllegalTransitionException;
 import com.ntg.citizenlink.exception.ResourceNotFoundException;
+import com.ntg.citizenlink.dto.agent.request.BulkReassignRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
@@ -21,6 +22,7 @@ import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.enums.WorkflowAction;
 import com.ntg.citizenlink.repositories.*;
 import com.ntg.citizenlink.security.CaseAccessPolicy;
+import com.ntg.citizenlink.config.AppTimeZone;
 import com.ntg.citizenlink.service.CaseTransitionRule;
 import com.ntg.citizenlink.service.CaseWorkflowService;
 import com.ntg.citizenlink.service.interfaces.CaseNumberService;
@@ -36,7 +38,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -55,6 +59,7 @@ public class CaseServiceImpl implements CaseService {
     private final CaseMapper caseMapper;
     private final CaseAccessPolicy caseAccessPolicy;
     private final CaseWorkflowService caseWorkflowService;
+    private final AppTimeZone appTimeZone;
 
     @Override
     @Transactional
@@ -285,7 +290,16 @@ public class CaseServiceImpl implements CaseService {
                 Sort.by(Sort.Direction.DESC, "createdAt")
         );
 
-        CaseSpecification spec = new CaseSpecification(filter, createdByFilter, assignedToFilter);
+        // US-54: resolve the overdue/dueToday reference instants from the app
+        // time zone so the case list the dashboard indicators link to evaluates
+        // the predicates against the same instants the indicator counts use.
+        OffsetDateTime now = OffsetDateTime.now(appTimeZone.zoneId());
+        OffsetDateTime todayStart = java.time.LocalDate.now(appTimeZone.zoneId())
+                .atStartOfDay(appTimeZone.zoneId()).toOffsetDateTime();
+        OffsetDateTime todayEnd = todayStart.plusDays(1);
+
+        CaseSpecification spec = new CaseSpecification(filter, createdByFilter, assignedToFilter,
+                now, todayStart, todayEnd);
         Page<Case> page = caseRepository.findAll(spec, pageable);
 
         List<CaseResponse> content = page.getContent()
@@ -484,6 +498,129 @@ public class CaseServiceImpl implements CaseService {
                 requester.getId(), requester.getDisplayName());
 
         return caseMapper.toResponse(saved, requester.getRole());
+    }
+
+    /**
+     * US-53 / ASN-01: bulk reassignment of selected cases to one active
+     * HANDLER. SUPERVISOR/ADMIN only (the controller gates this with
+     * @PreAuthorize; the workflow table is the second line of defense).
+     *
+     * Eligibility per case = the REASSIGN rules in CaseWorkflowService
+     * (ASSIGNED / IN_PROGRESS / AWAITING_INFO / SUSPENDED). CLOSED,
+     * CANCELLED, NEW and RESOLVED cases fail with a per-case error entry —
+     * the batch is best-effort, never all-or-nothing, and never silently
+     * skips failures (every requested ID gets an explicit result).
+     *
+     * AUD-01: each successful reassignment writes a REASSIGN timeline entry
+     * inside the same transaction, with the actor (supervisor) recorded;
+     * the entry's comment names the previous and new assignees so the
+     * audit trail contains previous assignee, new assignee, actor and
+     * timestamp (createdAt is set by @CreationTimestamp).
+     */
+    @Override
+    @Transactional
+    public BulkReassignResponse bulkReassignCases(BulkReassignRequest request, UUID requesterId) {
+        log.info("Bulk reassign requested: cases={} | targetUser={} | requester={}",
+                request.getCaseIds().size(), request.getAssignedToUserId(), requesterId);
+
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        // Role gate mirrors the REASSIGN workflow rules — defense in depth
+        // behind the controller's @PreAuthorize.
+        if (requester.getRole() != UserRole.SUPERVISOR && requester.getRole() != UserRole.ADMIN) {
+            throw new IllegalTransitionException("ROLE_NOT_ALLOWED",
+                    "Role " + requester.getRole() + " is not permitted to perform action REASSIGN");
+        }
+
+        // ASN-01: destination must be an active HANDLER (same validation as
+        // the single-case REASSIGN transition).
+        AppUser newHandler = userRepository.findById(request.getAssignedToUserId())
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", request.getAssignedToUserId()));
+        if (!newHandler.getActive()) {
+            throw new BusinessRuleException("Cannot assign case to an inactive user account");
+        }
+        if (newHandler.getRole() != UserRole.HANDLER) {
+            throw new IllegalTransitionException("INVALID_REASSIGNMENT", "Can only reassign to a user with HANDLER role");
+        }
+
+        // Collapse duplicates while preserving request order; each requested
+        // ID still yields exactly one result entry.
+        Set<UUID> requestedIds = new LinkedHashSet<>(request.getCaseIds());
+
+        BulkReassignResponse response = new BulkReassignResponse();
+        response.setTotalRequested(requestedIds.size());
+
+        for (UUID caseId : requestedIds) {
+            BulkReassignResponse.CaseResult result = new BulkReassignResponse.CaseResult();
+            result.setCaseId(caseId);
+            try {
+                reassignSingleCase(caseId, requester, newHandler, request.getComment(), result);
+                response.setSucceeded(response.getSucceeded() + 1);
+            } catch (ResourceNotFoundException | IllegalTransitionException | BusinessRuleException e) {
+                log.warn("Bulk reassign failed for case {}: {} - {}", caseId, e.getClass().getSimpleName(), e.getMessage());
+                result.setSuccess(false);
+                result.setErrorCode(switch (e) {
+                    case ResourceNotFoundException r -> "NOT_FOUND";
+                    case IllegalTransitionException t -> t.getCode();
+                    default -> "BAD_REQUEST";
+                });
+                result.setMessage(e.getMessage());
+                response.setFailed(response.getFailed() + 1);
+            }
+            response.getResults().add(result);
+        }
+
+        log.info("EVENT: CASE_BULK_REASSIGN | actorId={} | targetUserId={} | requested={} | succeeded={} | failed={}",
+                requester.getId(), newHandler.getId(), response.getTotalRequested(),
+                response.getSucceeded(), response.getFailed());
+
+        return response;
+    }
+
+    /**
+     * Reassigns one case to newHandler, populating the per-case result.
+     * Throws the standard workflow/business exceptions on ineligibility;
+     * the caller converts them into per-case failure entries.
+     */
+    private void reassignSingleCase(UUID caseId, AppUser requester, AppUser newHandler,
+                                    String comment, BulkReassignResponse.CaseResult result) {
+        Case found = caseRepository.findById(caseId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Case", caseId));
+        result.setCaseNumber(found.getCaseNumber());
+
+        // Same eligibility check as the single-case REASSIGN: resolves the
+        // rule for the case's CURRENT status and the requester's role.
+        // Throws IllegalTransitionException for ineligible statuses
+        // (NEW, RESOLVED, CLOSED, CANCELLED).
+        caseWorkflowService.resolveTransition(found.getStatus(), WorkflowAction.REASSIGN, requester.getRole());
+
+        AppUser oldHandler = found.getAssignedToUser();
+        found.setAssignedToUser(newHandler);
+        Case saved = caseRepository.save(found);
+
+        // AUD-01: timeline entry with previous assignee, new assignee, actor
+        // and timestamp — written in the same transaction as the reassignment.
+        StatusHistory history = new StatusHistory();
+        history.setCaseEntity(saved);
+        history.setFromStatus(saved.getStatus());
+        history.setToStatus(saved.getStatus());
+        history.setAction(WorkflowAction.REASSIGN);
+        history.setChangedByUser(requester);
+        history.setComment((oldHandler != null
+                ? "Reassigned from " + oldHandler.getDisplayName()
+                : "Reassigned from (unassigned)")
+                + " to " + newHandler.getDisplayName()
+                + (comment != null && !comment.isBlank() ? ": " + comment : ""));
+        statusHistoryRepository.save(history);
+
+        result.setSuccess(true);
+
+        log.info("Case {} reassigned from user {} to user {} by {} (bulk)",
+                found.getCaseNumber(),
+                oldHandler != null ? oldHandler.getId() : "null",
+                newHandler.getId(),
+                requester.getUsername());
     }
 
     private StatusHistoryResponse toStatusHistoryResponse(StatusHistory sh) {

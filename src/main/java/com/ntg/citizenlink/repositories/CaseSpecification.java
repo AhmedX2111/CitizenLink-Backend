@@ -4,11 +4,16 @@ package com.ntg.citizenlink.repositories;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
+import com.ntg.citizenlink.enums.CaseStatus;
 import jakarta.persistence.criteria.*;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -22,6 +27,14 @@ import java.util.UUID;
 public class CaseSpecification implements Specification<Case> {
 
     private static final char LIKE_ESCAPE_CHAR = '\\';
+
+    /**
+     * US-54: final (terminal) workflow states excluded from the workload
+     * quick filters (overdue / dueToday / unassigned) when no explicit
+     * status filter is present — overdue closed/cancelled cases are no
+     * longer actionable workload. Mirrors InboxSpecification.FINAL_STATES.
+     */
+    private static final Set<CaseStatus> FINAL_STATES = Set.of(CaseStatus.CLOSED, CaseStatus.CANCELLED);
 
     private final CaseSearchRequest filter;
 
@@ -37,10 +50,37 @@ public class CaseSpecification implements Specification<Case> {
      */
     private final UUID assignedToUserId;
 
+    /**
+     * US-54: reference instant for the overdue predicate (dueAt &lt; now).
+     * Computed by the service layer from the app time zone so counts and
+     * the linked case list agree; null falls back to the current instant
+     * (only reachable via the 3-arg constructor).
+     */
+    private final OffsetDateTime now;
+
+    /** US-54: inclusive start of "today" for the dueToday window. */
+    private final OffsetDateTime todayStart;
+
+    /** US-54: exclusive end of "today" for the dueToday window. */
+    private final OffsetDateTime todayEnd;
+
     public CaseSpecification(CaseSearchRequest filter, UUID createdByUserId, UUID assignedToUserId) {
+        this(filter, createdByUserId, assignedToUserId, null, null, null);
+    }
+
+    /**
+     * US-54: full constructor — the service passes the now/today window it
+     * resolved via AppTimeZone so the dashboard counts and the case list the
+     * indicators link to evaluate the predicates against identical instants.
+     */
+    public CaseSpecification(CaseSearchRequest filter, UUID createdByUserId, UUID assignedToUserId,
+                             OffsetDateTime now, OffsetDateTime todayStart, OffsetDateTime todayEnd) {
         this.filter = filter;
         this.createdByUserId = createdByUserId;
         this.assignedToUserId = assignedToUserId;
+        this.now = now;
+        this.todayStart = todayStart;
+        this.todayEnd = todayEnd;
     }
 
     /**
@@ -108,6 +148,59 @@ public class CaseSpecification implements Specification<Case> {
             predicates.add(cb.or(byCaseNumber, bySubject));
         }
 
+        // ------------------------------------------------------------------
+        // US-54 workload quick filters (independent, ANDed). When no explicit
+        // status filter is present, final states are excluded so the lists
+        // show actionable workload — matching what the dashboard indicators
+        // count. An explicit status filter overrides the exclusion.
+        // ------------------------------------------------------------------
+        boolean statusExplicit = filter.getStatus() != null;
+        if (!statusExplicit && workloadFilterPresent()) {
+            predicates.add(cb.not(root.get("status").in(FINAL_STATES)));
+        }
+
+        if (Boolean.TRUE.equals(filter.getOverdue())) {
+            Path<OffsetDateTime> dueAt = root.<OffsetDateTime>get("dueAt");
+            predicates.add(cb.and(cb.isNotNull(dueAt), cb.lessThan(dueAt, effectiveNow())));
+        }
+
+        if (Boolean.TRUE.equals(filter.getDueToday())) {
+            Path<OffsetDateTime> dueAt = root.<OffsetDateTime>get("dueAt");
+            predicates.add(cb.and(
+                    cb.greaterThanOrEqualTo(dueAt, effectiveTodayStart()),
+                    cb.lessThan(dueAt, effectiveTodayEnd())));
+        }
+
+        if (Boolean.TRUE.equals(filter.getUnassigned())) {
+            predicates.add(cb.isNull(root.get("assignedToUser")));
+        }
+
         return cb.and(predicates.toArray(new Predicate[0]));
+    }
+
+    private boolean workloadFilterPresent() {
+        return Boolean.TRUE.equals(filter.getOverdue())
+                || Boolean.TRUE.equals(filter.getDueToday())
+                || Boolean.TRUE.equals(filter.getUnassigned());
+    }
+
+    private OffsetDateTime effectiveNow() {
+        return now != null ? now : OffsetDateTime.now();
+    }
+
+    private OffsetDateTime effectiveTodayStart() {
+        if (todayStart != null) {
+            return todayStart;
+        }
+        ZoneId zone = ZoneId.systemDefault();
+        return LocalDate.now(zone).atStartOfDay(zone).toOffsetDateTime();
+    }
+
+    private OffsetDateTime effectiveTodayEnd() {
+        if (todayEnd != null) {
+            return todayEnd;
+        }
+        ZoneId zone = ZoneId.systemDefault();
+        return LocalDate.now(zone).plusDays(1).atStartOfDay(zone).toOffsetDateTime();
     }
 }

@@ -1,9 +1,11 @@
 package com.ntg.citizenlink.controller;
 
 
+import com.ntg.citizenlink.dto.agent.request.BulkReassignRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
+import com.ntg.citizenlink.dto.agent.response.BulkReassignResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.response.StatusHistoryResponse;
@@ -128,6 +130,27 @@ public class CaseController {
 
         UUID userId = securityContextHelper.getAuthenticatedUserId();
         CaseResponse response = caseService.transitionCase(id, userId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * POST /api/v1/cases/bulk-reassign
+     *
+     * US-53 / ASN-01: reassign one or more eligible cases to a single
+     * active HANDLER. SUPERVISOR and ADMIN only (BRD §4.3 permission
+     * matrix; service layer re-checks the role behind this gate).
+     * Eligibility per case follows the REASSIGN workflow rules — closed,
+     * cancelled and other ineligible cases are rejected per-case in the
+     * response rather than silently skipped. Destination picker data
+     * comes from GET /api/v1/users/handlers (active HANDLER users only).
+     */
+    @PostMapping("/bulk-reassign")
+    @PreAuthorize("hasAnyRole('SUPERVISOR', 'ADMIN')")
+    public ResponseEntity<BulkReassignResponse> bulkReassignCases(
+            @Valid @RequestBody BulkReassignRequest request) {
+
+        UUID userId = securityContextHelper.getAuthenticatedUserId();
+        BulkReassignResponse response = caseService.bulkReassignCases(request, userId);
         return ResponseEntity.ok(response);
     }
 }

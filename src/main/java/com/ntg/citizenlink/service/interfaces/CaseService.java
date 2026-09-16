@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.service.interfaces;
 
+import com.ntg.citizenlink.dto.agent.request.BulkReassignRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
@@ -86,5 +87,18 @@ public interface CaseService {
      * row (WFL-02), and returns the updated CaseResponse.
      */
     CaseResponse transitionCase(UUID caseId, UUID requesterId, CaseTransitionRequest request);
+
+    /**
+     * US-53: reassigns one or more eligible cases to a single destination
+     * user (ASN-01). SUPERVISOR/ADMIN only; destination must be an active
+     * HANDLER; each case's eligibility is checked against the REASSIGN
+     * workflow rules (closed, cancelled, NEW and RESOLVED cases are not
+     * reassignable). Every requested case gets an explicit success/failure
+     * entry in the response — failures are never silently skipped.
+     * Each successful reassignment writes a StatusHistory timeline entry
+     * (AUD-01) recording the previous assignee, new assignee, actor and
+     * timestamp.
+     */
+    BulkReassignResponse bulkReassignCases(BulkReassignRequest request, UUID requesterId);
 
 }
