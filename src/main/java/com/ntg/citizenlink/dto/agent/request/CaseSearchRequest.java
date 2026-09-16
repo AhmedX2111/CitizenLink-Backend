@@ -43,6 +43,35 @@ public class CaseSearchRequest {
      */
     private String keyword;
 
+    // ---------------------------------------------------------------------
+    // US-54 workload quick filters (dashboard indicator deep links).
+    // ---------------------------------------------------------------------
+
+    /**
+     * US-54: TRUE keeps only cases with dueAt != null AND dueAt &lt; now.
+     * When no explicit status filter is present, final states (CLOSED,
+     * CANCELLED) are excluded so the list shows actionable overdue work —
+     * the same predicate the team overdue indicator counts over, so the
+     * linked list matches the dashboard number. An explicit status filter
+     * overrides the exclusion (mirrors the my-inbox quick-filter semantics).
+     */
+    private Boolean overdue;
+
+    /**
+     * US-54: TRUE keeps only cases with dueAt inside the current calendar
+     * day ("today" resolved in app.time-zone via AppTimeZone). Same
+     * default final-state exclusion and explicit-status override as
+     * {@link #overdue}.
+     */
+    private Boolean dueToday;
+
+    /**
+     * US-54: TRUE keeps only cases with no assignee (assignedToUser IS NULL).
+     * Same default final-state exclusion and explicit-status override as
+     * {@link #overdue}.
+     */
+    private Boolean unassigned;
+
     @Min(value = 0, message = "Page index must be >= 0")
     private int page = 0;
 
