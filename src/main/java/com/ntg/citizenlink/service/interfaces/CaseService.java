@@ -5,6 +5,7 @@ import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
+import com.ntg.citizenlink.dto.agent.response.BulkReassignResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
 import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;

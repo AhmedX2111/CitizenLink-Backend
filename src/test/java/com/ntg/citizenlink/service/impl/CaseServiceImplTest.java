@@ -45,6 +45,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -55,6 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -98,6 +100,7 @@ class CaseServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(appTimeZone.zoneId()).thenReturn(ZoneId.systemDefault());
         caseId = UUID.randomUUID();
         requesterId = UUID.randomUUID();
         supervisor = user(UserRole.SUPERVISOR);
