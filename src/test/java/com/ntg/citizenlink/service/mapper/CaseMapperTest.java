@@ -8,6 +8,7 @@ import com.ntg.citizenlink.enums.CaseStatus;
 import com.ntg.citizenlink.enums.CaseType;
 import com.ntg.citizenlink.enums.Channel;
 import com.ntg.citizenlink.enums.Priority;
+import com.ntg.citizenlink.enums.UserRole;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -27,7 +28,7 @@ class CaseMapperTest {
 
     @Test
     void citizenPhone_isPopulated_whenCategoryIsNull() {
-        CaseResponse r = mapper.toResponse(caseWith(citizen(), null));
+        CaseResponse r = mapper.toResponse(caseWith(citizen(), null), UserRole.ADMIN);
 
         assertThat(r.getCitizenPhone()).isEqualTo("0100000000");
         assertThat(r.getCategoryId()).isNull();
@@ -35,7 +36,7 @@ class CaseMapperTest {
 
     @Test
     void citizenPhone_isPopulated_whenCategoryPresent() {
-        CaseResponse r = mapper.toResponse(caseWith(citizen(), category()));
+        CaseResponse r = mapper.toResponse(caseWith(citizen(), category()), UserRole.ADMIN);
 
         assertThat(r.getCitizenPhone()).isEqualTo("0100000000");
         assertThat(r.getCategoryId()).isNotNull();
@@ -43,10 +44,31 @@ class CaseMapperTest {
 
     @Test
     void citizenPhone_isNull_whenCitizenIsNull_evenWithCategoryPresent() {
-        CaseResponse r = mapper.toResponse(caseWith(null, category()));
+        CaseResponse r = mapper.toResponse(caseWith(null, category()), UserRole.ADMIN);
 
         assertThat(r.getCitizenPhone()).isNull();
         assertThat(r.getCategoryId()).isNotNull();
+    }
+
+    @Test
+    void citizenNationalId_isMasked_for_AGENT() {
+        CaseResponse r = mapper.toResponse(caseWith(citizen(), null), UserRole.AGENT);
+
+        assertThat(r.getCitizenNationalId()).isEqualTo("123****3456");
+    }
+
+    @Test
+    void citizenPhone_isMasked_for_AGENT() {
+        CaseResponse r = mapper.toResponse(caseWith(citizen(), null), UserRole.AGENT);
+
+        assertThat(r.getCitizenPhone()).isEqualTo("010****0000");
+    }
+
+    @Test
+    void citizenNationalId_isFull_for_ADMIN() {
+        CaseResponse r = mapper.toResponse(caseWith(citizen(), null), UserRole.ADMIN);
+
+        assertThat(r.getCitizenNationalId()).isEqualTo("1234567890123456");
     }
 
     private Case caseWith(Citizen citizen, Category category) {

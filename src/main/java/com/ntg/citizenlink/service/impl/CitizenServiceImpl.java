@@ -12,12 +12,19 @@ import com.ntg.citizenlink.entities.AppUser;
 import com.ntg.citizenlink.entities.Case;
 import com.ntg.citizenlink.entities.Citizen;
 import com.ntg.citizenlink.enums.CaseStatus;
+import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.repositories.AppUserRepository;
 import com.ntg.citizenlink.repositories.CaseRepository;
 import com.ntg.citizenlink.repositories.CitizenRepository;
 import com.ntg.citizenlink.service.interfaces.CitizenService;
+import com.ntg.citizenlink.util.MaskingContext;
+import com.ntg.citizenlink.util.MaskingLevel;
+import com.ntg.citizenlink.util.MaskingPolicy;
+import com.ntg.citizenlink.util.PiiMasker;
+import com.ntg.citizenlink.util.SearchNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -38,9 +45,18 @@ public class CitizenServiceImpl implements CitizenService {
     private final AppUserRepository appUserRepository;
     private final CaseRepository caseRepository;
 
+    /**
+     * US-59: configured size of the Citizen 360 Recent Cases list
+     * (default 5). Field-injected so the rest of the class keeps the
+     * @RequiredArgsConstructor constructor injection. The inline initializer
+     * keeps the default when constructed outside a Spring context (unit tests).
+     */
+    @Value("${app.citizen360.recent-cases-limit:5}")
+    private int recentCasesLimit = 5;
+
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request) {
+    public PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request, UUID requesterId) {
         // M-15: the search term may be a national ID or phone number. Log only
         // presence + length, never the identifier itself.
         String searchTerm = request.getSearchTerm();
@@ -55,8 +71,20 @@ public class CitizenServiceImpl implements CitizenService {
 
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
 
+        String rawTerm = request.getSearchTerm().trim();
+
+        String normalizedTerm = SearchNormalizer.normalizeForSearch(rawTerm);
+        String phoneTerm;
+        try {
+            phoneTerm = SearchNormalizer.normalizePhone(rawTerm);
+        } catch (IllegalArgumentException e) {
+            phoneTerm = null;
+        }
+
         Page<Citizen> citizenPage = citizenRepository.searchCitizens(
-                request.getSearchTerm().trim(),
+                normalizedTerm,
+                rawTerm,
+                phoneTerm,
                 pageable
         );
 
@@ -74,10 +102,19 @@ public class CitizenServiceImpl implements CitizenService {
                         row -> (Long) row[1]
                 ));
 
-        List<CitizenResponse> content = citizenPage.getContent()
-                .stream()
-                .map(c -> toResponse(c, caseCountsById.getOrDefault(c.getId(), 0L)))
-                .collect(Collectors.toList());
+        List<CitizenResponse> content;
+        if (citizenPage.getContent().isEmpty()) {
+            content = List.of();
+        } else {
+            AppUser requester = appUserRepository.findById(requesterId)
+                    .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+            UserRole requesterRole = requester.getRole();
+            content = citizenPage.getContent()
+                    .stream()
+                    .map(c -> toResponse(c, caseCountsById.getOrDefault(c.getId(), 0L)))
+                    .map(response -> applyMasking(response, requesterRole, MaskingContext.SEARCH_RESULTS))
+                    .collect(Collectors.toList());
+        }
 
         return new PagedResponse<>(
                 content,
@@ -93,6 +130,10 @@ public class CitizenServiceImpl implements CitizenService {
     public CitizenResponse createCitizen(CreateCitizenRequest request, UUID createdByUserId) {
         log.info("Creating new citizen");
 
+        // Normalize phone before duplicate checks so any format of the same
+        // number is detected as a duplicate.
+        String normalizedPhone = SearchNormalizer.normalizePhone(request.getPhone());
+
         // Check for duplicate national ID
         if (citizenRepository.existsByNationalId(request.getNationalId())) {
             log.warn("Citizen creation failed due to duplicate national ID");
@@ -100,7 +141,7 @@ public class CitizenServiceImpl implements CitizenService {
         }
 
         // Check for duplicate phone
-        if (citizenRepository.existsByPhone(request.getPhone())) {
+        if (citizenRepository.existsByPhone(normalizedPhone)) {
             log.warn("Duplicate phone number detected during citizen creation");
             throw new DuplicateResourceException("Citizen", "phone number", request.getPhone());
         }
@@ -124,8 +165,9 @@ public class CitizenServiceImpl implements CitizenService {
         // Create new citizen entity
         Citizen citizen = new Citizen();
         citizen.setFullName(request.getFullName());
+        citizen.setFullNameNormalized(SearchNormalizer.normalizeNameForSearch(request.getFullName()));
         citizen.setNationalId(request.getNationalId());
-        citizen.setPhone(request.getPhone());
+        citizen.setPhone(normalizedPhone);
         citizen.setEmail(email);
         citizen.setPreferredLanguage(request.getPreferredLanguage() != null ? request.getPreferredLanguage() : "en");
         citizen.setCreatedByUser(createdBy);
@@ -179,16 +221,19 @@ public class CitizenServiceImpl implements CitizenService {
                 .mapToLong(e -> e.getValue())
                 .sum();
 
+        // US-59: recent cases are the most recently UPDATED (not created)
+        // cases the requester may see, capped at app.citizen360.recent-cases-limit.
         List<Case> recentCases = caseRepository
-                .findVisibleByCitizenIdOrderByCreatedAtDesc(
-                        id, createdByFilter, assignedToFilter, PageRequest.of(0, 5));
+                .findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                        id, createdByFilter, assignedToFilter,
+                        PageRequest.of(0, recentCasesLimit));
 
-        return CitizenProfileResponse.builder()
+        CitizenProfileResponse response = CitizenProfileResponse.builder()
                 .id(citizen.getId())
                 .fullName(citizen.getFullName())
-                .nationalId(citizen.getNationalId())
-                .phone(citizen.getPhone())
-                .email(citizen.getEmail())
+                .nationalId(maskIfNeeded(requester.getRole(), "nationalId", citizen.getNationalId(), MaskingContext.DETAIL_VIEW, PiiMasker::maskNationalId))
+                .phone(maskIfNeeded(requester.getRole(), "phone", citizen.getPhone(), MaskingContext.DETAIL_VIEW, PiiMasker::maskPhone))
+                .email(maskIfNeeded(requester.getRole(), "email", citizen.getEmail(), MaskingContext.DETAIL_VIEW, PiiMasker::maskEmail))
                 .preferredLanguage(citizen.getPreferredLanguage())
                 .createdAt(citizen.getCreatedAt())
                 .createdByUserName(citizen.getCreatedByUser() != null ?
@@ -200,6 +245,8 @@ public class CitizenServiceImpl implements CitizenService {
                         .map(this::toCaseSummary)
                         .collect(Collectors.toList()))
                 .build();
+
+        return response;
     }
 
     @Override
@@ -220,7 +267,8 @@ public class CitizenServiceImpl implements CitizenService {
         long caseCount = caseRepository.countVisibleByCitizenId(
                 id, filters.createdByUserId, filters.assignedToUserId);
 
-        return toResponse(citizen, caseCount);
+        CitizenResponse response = toResponse(citizen, caseCount);
+        return applyMasking(response, requester.getRole(), MaskingContext.DETAIL_VIEW);
     }
 
     /**
@@ -249,6 +297,46 @@ public class CitizenServiceImpl implements CitizenService {
     }
 
     /**
+     * US-59: page through a citizen's complete permitted case history, ordered
+     * by last update (updatedAt DESC). Reuses the same role->visibility filter
+     * as getCitizenProfile, so the paged history never shows a case the user
+     * could not already see in the profile. 404 when the citizen is unknown.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<CaseSummaryResponse> getCitizenCaseHistory(
+            UUID citizenId, UUID requesterId, int page, int size) {
+        log.info("Fetching case history for citizen: {} by user: {} (page: {}, size: {})",
+                citizenId, requesterId, page, size);
+
+        citizenRepository.findById(citizenId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", citizenId));
+
+        AppUser requester = appUserRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        VisibilityFilters filters = visibilityFilters(requester);
+
+        // The JPQL query orders by updatedAt DESC itself (with an id
+        // tiebreaker), so the pageable carries no sort.
+        Pageable pageable = PageRequest.of(page, size);
+        List<Case> cases = caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenId, filters.createdByUserId, filters.assignedToUserId, pageable);
+
+        // L-05: same access-filtered total as the profile, so the history and
+        // the 360 numbers never contradict each other.
+        long total = caseRepository.countVisibleByCitizenId(
+                citizenId, filters.createdByUserId, filters.assignedToUserId);
+
+        int totalPages = (int) Math.ceil((double) total / Math.max(1, size));
+        List<CaseSummaryResponse> content = cases.stream()
+                .map(this::toCaseSummary)
+                .collect(Collectors.toList());
+
+        return new PagedResponse<>(content, page, size, total, totalPages);
+    }
+
+    /**
      * Convert Citizen entity to CitizenResponse DTO.
      *
      * caseCount is always passed in by the caller rather than looked up here —
@@ -270,6 +358,25 @@ public class CitizenServiceImpl implements CitizenService {
     }
 
     /**
+     * Apply role-based masking to a CitizenResponse according to the decision table.
+     */
+    private CitizenResponse applyMasking(CitizenResponse response, UserRole role, MaskingContext context) {
+        if (response == null) return response;
+        response.setNationalId(maskIfNeeded(role, "nationalId", response.getNationalId(), context, PiiMasker::maskNationalId));
+        response.setPhone(maskIfNeeded(role, "phone", response.getPhone(), context, PiiMasker::maskPhone));
+        response.setEmail(maskIfNeeded(role, "email", response.getEmail(), context, PiiMasker::maskEmail));
+        return response;
+    }
+
+    private String maskIfNeeded(UserRole role, String fieldName, String value, MaskingContext context, java.util.function.Function<String, String> masker) {
+        MaskingLevel level = MaskingPolicy.forField(role, fieldName, context);
+        if (level == MaskingLevel.MASKED) {
+            return masker.apply(value);
+        }
+        return value;
+    }
+
+    /**
      * Convert Case entity to CaseSummaryResponse DTO
      */
     private CaseSummaryResponse toCaseSummary(Case caseEntity) {
@@ -282,6 +389,11 @@ public class CitizenServiceImpl implements CitizenService {
                 .createdAt(caseEntity.getCreatedAt())
                 .assignedToName(caseEntity.getAssignedToUser() != null ?
                         caseEntity.getAssignedToUser().getDisplayName() : null)
+                .departmentNameEn(caseEntity.getDepartment() != null ?
+                        caseEntity.getDepartment().getNameEn() : null)
+                .departmentNameAr(caseEntity.getDepartment() != null ?
+                        caseEntity.getDepartment().getNameAr() : null)
+                .updatedAt(caseEntity.getUpdatedAt())
                 .build();
     }
 }

@@ -32,6 +32,7 @@ public class CaseResponse {
     private CaseStatus status;
     private Channel channel;
     private String resolutionSummary;
+    private String duplicateReason;
     private OffsetDateTime dueAt;
 
     // Flattened citizen info

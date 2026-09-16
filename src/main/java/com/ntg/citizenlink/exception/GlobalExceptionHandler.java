@@ -1,5 +1,6 @@
 package com.ntg.citizenlink.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
@@ -74,6 +75,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         log.warn("Parameter validation failed: {}", details);
         ErrorResponse body = new ErrorResponse("VALIDATION_ERROR", "Invalid parameter value(s)", details);
         return ResponseEntity.badRequest().headers(headers).body(body);
+    }
+
+    // -------------------------------------------------------------------------
+    // 400 Bad Request - AOP method validation (@Validated on a controller)
+    // -------------------------------------------------------------------------
+    /**
+     * @Validated triggers Spring's MethodValidationInterceptor, which surfaces
+     * bean-style validation as {@link ConstraintViolationException} (the
+     * MVC-native path above throws HandlerMethodValidationException instead).
+     * Both map to the same 400 envelope so simple-type parameter constraints
+     * (e.g. @Min/@Max on @RequestParam) are consistent across paths.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex) {
+        List<FieldErrorDetail> details = ex.getConstraintViolations().stream()
+                .map(v -> new FieldErrorDetail(v.getPropertyPath().toString(), v.getMessage()))
+                .toList();
+        log.warn("Method validation failed: {}", details);
+        ErrorResponse body = new ErrorResponse("VALIDATION_ERROR", "Invalid parameter value(s)", details);
+        return ResponseEntity.badRequest().body(body);
     }
 
     // -------------------------------------------------------------------------

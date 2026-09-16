@@ -340,4 +340,256 @@ class CaseFlowIntegrationTest {
                         .content(createBody()))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ── US-57: case creation from Citizen 360 ─────────────────────────
+
+    private String createCitizenCaseBody() {
+        return citizenCaseBody(category.getId(), department.getId(), "Citizen 360 water leak");
+    }
+
+    private String citizenCaseBody(UUID categoryId, UUID departmentId, String subject) {
+        return """
+                {
+                  "subject": "%s",
+                  "description": "Created from the citizen profile",
+                  "type": "COMPLAINT",
+                  "priority": "HIGH",
+                  "channel": "PHONE",
+                  "categoryId": "%s",
+                  "departmentId": "%s"
+                }
+                """.formatted(subject, categoryId, departmentId);
+    }
+
+    private String createCitizenCase(String token) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createCitizenCaseBody()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+    }
+
+    private void makeResolved(String caseId) throws Exception {
+        String handlerToken = login(handler.getUsername());
+        transition(supervisorToken, caseId, "ASSIGN", "\"assignedToUserId\":\"" + handler.getId() + "\"");
+        transition(handlerToken, caseId, "START", null);
+        transition(handlerToken, caseId, "RESOLVE", "\"resolutionSummary\":\"Fixed\"");
+    }
+
+    @Test
+    void agentCreatesCaseFromCitizen360_returns201_andCaseAppearsInProfile() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        MvcResult result = mockMvc.perform(post("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createCitizenCaseBody()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("NEW"))
+                .andExpect(jsonPath("$.caseNumber").isNotEmpty())
+                .andExpect(jsonPath("$.citizenId").value(citizen.getId().toString()))
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        String caseId = body.get("id").asText();
+        String caseNumber = body.get("caseNumber").asText();
+        assertThat(caseNumber).matches("CASE-\\d{4}-\\d{5}");
+
+        // The new case shows up on the same citizen's Citizen 360 profile —
+        // the loop this story describes: profile -> new case -> back to profile.
+        mockMvc.perform(get("/api/v1/citizens/profile/{id}", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recentCases[0].caseNumber").value(caseNumber))
+                .andExpect(jsonPath("$.recentCases[0].departmentNameEn").value(department.getNameEn()))
+                .andExpect(jsonPath("$.recentCases[0].departmentNameAr").value(department.getNameAr()))
+                .andExpect(jsonPath("$.recentCases[0].updatedAt").isNotEmpty());
+
+        // And the case-detail page the frontend navigates to exposes the ID.
+        mockMvc.perform(get("/api/v1/cases/{id}", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseNumber").value(caseNumber));
+    }
+
+    @Test
+    void createCaseFromCitizen360_returns404_whenCitizenUnknown() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        mockMvc.perform(post("/api/v1/citizens/{id}/cases", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createCitizenCaseBody()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void createCaseFromCitizen360_returns400_whenBodyInvalid() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        String invalidBody = createCitizenCaseBody().replace("\"Citizen 360 water leak\"", "\"\"");
+        mockMvc.perform(post("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    // ── US-58: possible-duplicate warning for Citizen 360 creation ─────
+
+    @Test
+    void duplicateCandidates_returnsOpenCases_inSameCategoryOrDepartment() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        // Existing open case (same category + department) -> candidate.
+        String existing = createCitizenCase(agentToken);
+
+        // A resolved case of the same citizen must NOT appear (non-final rule).
+        String resolved = createCitizenCase(agentToken);
+        makeResolved(resolved);
+
+        // A case in a different category AND different department -> not a candidate.
+        Category otherCategory = categoryRepository.save(EntityFactory.category());
+        Department otherDepartment = departmentRepository.save(EntityFactory.department());
+        mockMvc.perform(post("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(citizenCaseBody(otherCategory.getId(), otherDepartment.getId(), "Other issue")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases/duplicate-candidates", citizen.getId())
+                        .param("categoryId", category.getId().toString())
+                        .param("departmentId", department.getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(existing))
+                .andExpect(jsonPath("$[0].status").value("NEW"))
+                .andExpect(jsonPath("$[0].subject").value("Citizen 360 water leak"))
+                .andExpect(jsonPath("$[0].createdAt").isNotEmpty());
+    }
+
+    @Test
+    void duplicateCandidates_returnsEmpty_whenAllCasesResolvedOrClosed() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        String existing = createCitizenCase(agentToken);
+        makeResolved(existing);
+
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases/duplicate-candidates", citizen.getId())
+                        .param("categoryId", category.getId().toString())
+                        .param("departmentId", department.getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void duplicateReason_isStoredAndVisible_mirroringAgentOverrideFlow() throws Exception {
+        AppUser agent = createUser(UserRole.AGENT);
+        String agentToken = login(agent.getUsername());
+
+        // An open case exists -> the agent would have been warned.
+        createCitizenCase(agentToken);
+
+        // The agent continues anyway, providing a short reason.
+        String body = createCitizenCaseBody().replace(
+                "\"Citizen 360 water leak\"",
+                "\"Citizen 360 water leak\",\n  \"duplicateReason\": \"Citizen insists the leak persists\"");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.duplicateReason").value("Citizen insists the leak persists"))
+                .andReturn();
+
+        // The reason is recorded with the new case (US-58 AC).
+        String newCaseId = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+        Case persisted = caseRepository.findById(UUID.fromString(newCaseId)).orElseThrow();
+        assertThat(persisted.getDuplicateReason()).isEqualTo("Citizen insists the leak persists");
+    }
+
+    @Test
+    void duplicateCandidates_returns404_whenCitizenUnknown() throws Exception {
+        String agentToken = login(createUser(UserRole.AGENT).getUsername());
+
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases/duplicate-candidates", UUID.randomUUID())
+                        .param("categoryId", category.getId().toString())
+                        .param("departmentId", department.getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + agentToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    // ── US-59: citizen case history (paged, ordered by last update) ────
+
+    @Test
+    void caseHistory_ordersByUpdatedAtDesc_andExposesDepartmentNames() throws Exception {
+        AppUser supervisorUser = createUser(UserRole.SUPERVISOR);
+        String token = login(supervisorUser.getUsername());
+
+        String first = createCitizenCase(token);
+        String second = createCitizenCase(token);
+
+        // Touching the first case makes it the most recently UPDATED, so it
+        // must lead the history even though the second was created later.
+        transition(token, first, "ASSIGN", "\"assignedToUserId\":\"" + handler.getId() + "\"");
+
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.content[0].id").value(first))
+                .andExpect(jsonPath("$.content[0].status").value("ASSIGNED"))
+                .andExpect(jsonPath("$.content[1].id").value(second))
+                .andExpect(jsonPath("$.content[0].departmentNameEn").value(department.getNameEn()))
+                .andExpect(jsonPath("$.content[0].departmentNameAr").value(department.getNameAr()))
+                .andExpect(jsonPath("$.content[0].updatedAt").isNotEmpty())
+                .andExpect(jsonPath("$.content[0].caseNumber").isNotEmpty());
+    }
+
+    @Test
+    void caseHistory_handlerSeesOnlyAssignedCases() throws Exception {
+        AppUser handler1 = createUser(UserRole.HANDLER);
+        String supervisorToken = login(supervisor.getUsername());
+
+        String assigned = createCitizenCase(supervisorToken);
+        String other = createCitizenCase(supervisorToken);
+        transition(supervisorToken, assigned, "ASSIGN", "\"assignedToUserId\":\"" + handler1.getId() + "\"");
+        transition(supervisorToken, other, "ASSIGN", "\"assignedToUserId\":\"" + handler.getId() + "\"");
+
+        String handlerToken = login(handler1.getUsername());
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases", citizen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + handlerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].id").value(assigned));
+    }
+
+    @Test
+    void caseHistory_returns404_whenCitizenUnknown() throws Exception {
+        AppUser supervisorUser = createUser(UserRole.SUPERVISOR);
+        String token = login(supervisorUser.getUsername());
+
+        mockMvc.perform(get("/api/v1/citizens/{id}/cases", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
 }

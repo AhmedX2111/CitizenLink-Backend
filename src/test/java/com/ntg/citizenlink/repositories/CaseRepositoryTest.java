@@ -32,6 +32,7 @@ class CaseRepositoryTest {
     @Autowired private CategoryRepository categoryRepository;
     @Autowired private DepartmentRepository departmentRepository;
     @Autowired private AppUserRepository appUserRepository;
+    @Autowired private jakarta.persistence.EntityManager entityManager;
 
     private Citizen citizenA;
     private Citizen citizenB;
@@ -219,6 +220,70 @@ class CaseRepositoryTest {
         assertThat(result).hasSize(5);
         assertThat(result).extracting(Case::getId)
                 .containsExactlyElementsOf(all.stream().limit(5).map(Case::getId).collect(toList()));
+    }
+
+    // ── US-59: recent-cases / history ordered by last update ─────────────
+
+    @Test
+    void findVisibleByCitizenIdOrderByUpdatedAtDesc_ordersByMostRecentlyUpdatedFirst()
+            throws InterruptedException {
+        Case c1 = savedCase(citizenA, CaseStatus.NEW);
+        Case c2 = savedCase(citizenA, CaseStatus.NEW);
+        // Flush the two INSERTs BEFORE the update so they get their own
+        // timestamps; otherwise Hibernate batches insert+update into one flush
+        // and both rows end up with the same wall-clock time (tie -> id order).
+        entityManager.flush();
+        Thread.sleep(5);
+        // Touching c2 makes it the most recently UPDATED case, ahead of c1 even
+        // though c1 was created first — the US-59 ordering contract.
+        c2.setSubject("Updated second case");
+        caseRepository.saveAndFlush(c2);
+
+        List<Case> result = caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenA.getId(), creator.getId(), null, PageRequest.of(0, 10));
+
+        assertThat(result).extracting(Case::getId)
+                .containsExactly(c2.getId(), c1.getId());
+    }
+
+    @Test
+    void findVisibleByCitizenIdOrderByUpdatedAtDesc_limitsToPageSize() {
+        for (int i = 0; i < 7; i++) {
+            savedCase(citizenA, CaseStatus.NEW);
+        }
+
+        List<Case> result = caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenA.getId(), creator.getId(), null, PageRequest.of(0, 5));
+
+        assertThat(result).hasSize(5);
+    }
+
+    @Test
+    void findVisibleByCitizenIdOrderByUpdatedAtDesc_excludesOtherCitizensCases() {
+        Case mine = savedCase(citizenA, CaseStatus.NEW);
+        savedCase(citizenB, CaseStatus.NEW);
+
+        List<Case> result = caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenA.getId(), creator.getId(), null, PageRequest.of(0, 10));
+
+        assertThat(result).extracting(Case::getId).containsExactly(mine.getId());
+    }
+
+    @Test
+    void findVisibleByCitizenIdOrderByUpdatedAtDesc_fetchesDepartmentAndAssignedToInQuery() {
+        Case c = savedCase(citizenA, CaseStatus.NEW);
+        entityManager.flush();
+        entityManager.clear();
+
+        // Outside the persistence context, any lazy association that was NOT
+        // part of the JOIN FETCH would throw LazyInitializationException here.
+        Case result = caseRepository.findVisibleByCitizenIdOrderByUpdatedAtDesc(
+                citizenA.getId(), creator.getId(), null, PageRequest.of(0, 1)).get(0);
+
+        assertThat(result.getId()).isEqualTo(c.getId());
+        assertThat(result.getDepartment().getNameEn()).isNotNull();
+        assertThat(result.getDepartment().getNameAr()).isNotNull();
+        assertThat(result.getAssignedToUser()).isNull(); // unassigned, LEFT JOIN
     }
 
     @Test

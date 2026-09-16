@@ -7,13 +7,17 @@ import com.ntg.citizenlink.dto.agent.request.BulkReassignRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
-import com.ntg.citizenlink.dto.agent.response.BulkReassignResponse;
+import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
+import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.response.StatusHistoryResponse;
 import com.ntg.citizenlink.entities.*;
 import com.ntg.citizenlink.enums.CaseStatus;
+import com.ntg.citizenlink.enums.CaseType;
+import com.ntg.citizenlink.enums.Channel;
+import com.ntg.citizenlink.enums.Priority;
 import com.ntg.citizenlink.enums.UserRole;
 import com.ntg.citizenlink.enums.WorkflowAction;
 import com.ntg.citizenlink.repositories.*;
@@ -69,15 +73,106 @@ public class CaseServiceImpl implements CaseService {
         Citizen citizen = citizenRepository.findByNationalId(request.getCitizenNationalId())
                 .orElseThrow(() -> ResourceNotFoundException.of("Citizen with National ID", request.getCitizenNationalId()));
 
-        Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> ResourceNotFoundException.of("Category", request.getCategoryId()));
+        return doCreateCase(creator, new CaseCreateSpec(
+                citizen,
+                request.getSubject(),
+                request.getDescription(),
+                request.getType(),
+                request.getPriority(),
+                request.getChannel(),
+                request.getCategoryId(),
+                request.getDepartmentId(),
+                request.getAssignedToUserId(),
+                request.getDueAt(),
+                request.getDuplicateReason()));
+    }
+
+    @Override
+    @Transactional
+    public CaseResponse createCitizenCase(UUID citizenId, CreateCitizenCaseRequest request, UUID creatorId) {
+        log.info("Creating new case from Citizen 360 (US-57) - citizen: {}, department: {}, category: {}",
+                citizenId, request.getDepartmentId(), request.getCategoryId());
+
+        AppUser creator = userRepository.findById(creatorId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", creatorId));
+
+        // The citizen is resolved from the URL path (bound by the controller),
+        // never from the request body — so a masked national ID (US-56) is not
+        // needed and the citizen cannot be swapped mid-flow.
+        Citizen citizen = citizenRepository.findById(citizenId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", citizenId));
+
+        return doCreateCase(creator, new CaseCreateSpec(
+                citizen,
+                request.getSubject(),
+                request.getDescription(),
+                request.getType(),
+                request.getPriority(),
+                request.getChannel(),
+                request.getCategoryId(),
+                request.getDepartmentId(),
+                request.getAssignedToUserId(),
+                request.getDueAt(),
+                request.getDuplicateReason()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DuplicateCaseCandidateResponse> findDuplicateCandidates(UUID citizenId, UUID categoryId,
+                                                                        UUID departmentId, UUID requesterId) {
+        log.debug("Checking possible duplicate cases for citizen {} (category {}, department {})",
+                citizenId, categoryId, departmentId);
+
+        citizenRepository.findById(citizenId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Citizen", citizenId));
+
+        AppUser requester = userRepository.findById(requesterId)
+                .orElseThrow(() -> ResourceNotFoundException.of("AppUser", requesterId));
+
+        // Same requester-visibility restriction as the Citizen 360
+        // recent-cases list — the warning must never surface a case the
+        // requester could not open anyway (documented rule, US-58).
+        UUID createdByFilter = null;
+        UUID assignedToFilter = null;
+
+        switch (requester.getRole()) {
+            case ADMIN:
+            case SUPERVISOR:
+                // both null — see all of the citizen's cases
+                break;
+            case HANDLER:
+                assignedToFilter = requesterId;
+                break;
+            default: // AGENT
+                createdByFilter = requesterId;
+                break;
+        }
+
+        return caseRepository.findNonFinalDuplicateCandidates(
+                        citizenId, categoryId, departmentId, createdByFilter, assignedToFilter)
+                .stream()
+                .map(c -> new DuplicateCaseCandidateResponse(
+                        c.getId(), c.getCaseNumber(), c.getSubject(), c.getStatus(), c.getCreatedAt()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Shared persistence path for every way a case can be created
+     * (national-id endpoint and the Citizen 360 citizen-scoped endpoint).
+     * Keeping the rules here guarantees both entry points behave
+     * identically — any business rule added here applies to all of them.
+     */
+    private CaseResponse doCreateCase(AppUser creator, CaseCreateSpec spec) {
+
+        Category category = categoryRepository.findById(spec.categoryId())
+                .orElseThrow(() -> ResourceNotFoundException.of("Category", spec.categoryId()));
 
         if (!category.getActive()) {
             throw new BusinessRuleException("Category is not active and cannot be assigned to a case");
         }
 
-        Department department = departmentRepository.findById(request.getDepartmentId())
-                .orElseThrow(() -> ResourceNotFoundException.of("Department", request.getDepartmentId()));
+        Department department = departmentRepository.findById(spec.departmentId())
+                .orElseThrow(() -> ResourceNotFoundException.of("Department", spec.departmentId()));
 
         if (!department.getActive()) {
             throw new BusinessRuleException("Department is not active and cannot be assigned to a case");
@@ -88,11 +183,11 @@ public class CaseServiceImpl implements CaseService {
         // restricted to those roles on the transition endpoint). For any other role
         // the field is ignored so an AGENT cannot bypass the ASSIGN gate this way.
         AppUser assignedTo = null;
-        if (request.getAssignedToUserId() != null) {
+        if (spec.assignedToUserId() != null) {
             UserRole creatorRole = creator.getRole();
             if (creatorRole == UserRole.SUPERVISOR || creatorRole == UserRole.ADMIN) {
-                assignedTo = userRepository.findById(request.getAssignedToUserId())
-                        .orElseThrow(() -> ResourceNotFoundException.of("AppUser (assignedTo)", request.getAssignedToUserId()));
+                assignedTo = userRepository.findById(spec.assignedToUserId())
+                        .orElseThrow(() -> ResourceNotFoundException.of("AppUser (assignedTo)", spec.assignedToUserId()));
                 if (!assignedTo.getActive()) {
                     throw new BusinessRuleException("Cannot assign case to an inactive user account");
                 }
@@ -108,20 +203,21 @@ public class CaseServiceImpl implements CaseService {
 
         Case newCase = new Case();
         newCase.setCaseNumber(caseNumber);
-        newCase.setSubject(request.getSubject());
-        newCase.setDescription(request.getDescription());
-        newCase.setType(request.getType());
-        newCase.setPriority(request.getPriority());
+        newCase.setSubject(spec.subject());
+        newCase.setDescription(spec.description());
+        newCase.setType(spec.type());
+        newCase.setPriority(spec.priority());
         // Pre-assigned cases are created directly in ASSIGNED so the handler can
         // act on them (NEW-with-assignee is unreachable by any workflow rule).
         newCase.setStatus(assignedTo != null ? CaseStatus.ASSIGNED : CaseStatus.NEW);
-        newCase.setChannel(request.getChannel());
-        newCase.setDueAt(request.getDueAt());
-        newCase.setCitizen(citizen);
+        newCase.setChannel(spec.channel());
+        newCase.setDueAt(spec.dueAt());
+        newCase.setCitizen(spec.citizen());
         newCase.setCategory(category);
         newCase.setDepartment(department);
         newCase.setCreatedByUser(creator);
         newCase.setAssignedToUser(assignedTo);
+        newCase.setDuplicateReason(spec.duplicateReason());
 
         Case saved = caseRepository.save(newCase);
 
@@ -146,7 +242,21 @@ public class CaseServiceImpl implements CaseService {
         }
 
         log.info("Case created successfully with ID: {}", saved.getId());
-        return caseMapper.toResponse(saved);
+        return caseMapper.toResponse(saved, creator.getRole());
+    }
+
+    private record CaseCreateSpec(
+            Citizen citizen,
+            String subject,
+            String description,
+            CaseType type,
+            Priority priority,
+            Channel channel,
+            UUID categoryId,
+            UUID departmentId,
+            UUID assignedToUserId,
+            OffsetDateTime dueAt,
+            String duplicateReason) {
     }
 
     @Override
@@ -194,7 +304,7 @@ public class CaseServiceImpl implements CaseService {
 
         List<CaseResponse> content = page.getContent()
                 .stream()
-                .map(caseMapper::toResponse)
+                .map(c -> caseMapper.toResponse(c, requester.getRole()))
                 .collect(Collectors.toList());
 
         return new PagedResponse<>(
@@ -222,7 +332,7 @@ public class CaseServiceImpl implements CaseService {
             throw ResourceNotFoundException.of("Case", caseId);
         }
 
-        return caseMapper.toResponse(found);
+        return caseMapper.toResponse(found, requester.getRole());
     }
 
     @Override
@@ -387,7 +497,7 @@ public class CaseServiceImpl implements CaseService {
                 caseId, saved.getCaseNumber(), request.getAction(), fromStatus, toStatus,
                 requester.getId(), requester.getDisplayName());
 
-        return caseMapper.toResponse(saved);
+        return caseMapper.toResponse(saved, requester.getRole());
     }
 
     /**

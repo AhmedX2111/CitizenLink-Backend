@@ -93,6 +93,14 @@ public class Case {
     @Column(name = "resolution_summary", columnDefinition = "TEXT")
     private String resolutionSummary;
 
+    /**
+     * US-58: the agent's short reason, recorded on creation when the case was
+     * created despite an active possible-duplicate warning. Null when no
+     * warning was raised for this case.
+     */
+    @Column(name = "duplicate_reason", length = 500)
+    private String duplicateReason;
+
     @Column(name = "due_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime dueAt;
 

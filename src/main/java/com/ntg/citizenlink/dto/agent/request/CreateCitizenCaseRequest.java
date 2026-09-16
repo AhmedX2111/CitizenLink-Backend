@@ -5,19 +5,26 @@ import com.ntg.citizenlink.enums.Channel;
 import com.ntg.citizenlink.enums.Priority;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import com.ntg.citizenlink.constants.ValidationPatterns;
 import jakarta.validation.constraints.Size;
-import jakarta.validation.constraints.Pattern;
-
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * US-57: case creation launched from the Citizen 360 screen.
+ *
+ * Mirrors {@link CreateCaseRequest} but WITHOUT the citizen national ID —
+ * the citizen is bound to the URL path by the caller instead. This lets
+ * call-center agents create a case for the citizen they are already
+ * looking at even when that citizen's national ID is masked for their
+ * role (US-56), and guarantees the citizen cannot be silently swapped
+ * during the flow.
+ */
 @Setter
 @Getter
-public class CreateCaseRequest {
+public class CreateCitizenCaseRequest {
 
     @NotBlank(message = "Subject is required")
     @Size(max = 255, message = "Subject must not exceed 255 characters")
@@ -35,10 +42,6 @@ public class CreateCaseRequest {
 
     @NotNull(message = "Channel is required")
     private Channel channel;
-
-    @NotBlank(message = "Citizen National ID is required")
-    @Pattern(regexp = ValidationPatterns.NATIONAL_ID_PATTERN, message = ValidationPatterns.NATIONAL_ID_MESSAGE)
-    private String citizenNationalId;
 
     @NotNull(message = "Category ID is required")
     private UUID categoryId;

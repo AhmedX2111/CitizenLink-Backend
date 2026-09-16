@@ -2,6 +2,7 @@ package com.ntg.citizenlink.service.interfaces;
 
 import com.ntg.citizenlink.dto.agent.request.CitizenSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCitizenRequest;
+import com.ntg.citizenlink.dto.agent.response.CaseSummaryResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenProfileResponse;
 import com.ntg.citizenlink.dto.agent.response.CitizenResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
@@ -14,8 +15,9 @@ public interface CitizenService {
     /**
      * Search citizens by name (partial), national ID, or phone.
      * Returns paginated response with PagedResponse wrapper.
+     * Sensitive fields are masked according to the requester's role.
      */
-    PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request);
+    PagedResponse<CitizenResponse> searchCitizens(CitizenSearchRequest request, UUID requesterId);
 
     /**
      * Create a new citizen record.
@@ -32,6 +34,13 @@ public interface CitizenService {
      * Get citizen by ID with case count.
      */
     CitizenResponse getCitizenById(UUID id, UUID requesterId);
+
+    /**
+     * US-59: page through a citizen's complete permitted case history, ordered
+     * by last update (updatedAt DESC). Same role->visibility restriction as
+     * getCitizenProfile. 404 when the citizen does not exist.
+     */
+    PagedResponse<CaseSummaryResponse> getCitizenCaseHistory(UUID citizenId, UUID requesterId, int page, int size);
 
     /**
      * Check if citizen exists by national ID.

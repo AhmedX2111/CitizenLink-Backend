@@ -93,6 +93,38 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
             Pageable pageable
     );
 
+    // ── US-59: recent-cases / full history ordered by last update ───────
+    /**
+     * A citizen's cases ordered by last update (updatedAt DESC), restricted to
+     * what the requester may see using the same visibility predicate as
+     * findVisibleByCitizenIdOrderByCreatedAtDesc.
+     *
+     * US-59: serves BOTH the profile's Recent Cases list (a small Pageable,
+     * e.g. PageRequest.of(0, limit)) and the complete paged history via
+     * GET /api/v1/citizens/{id}/cases — the caller passes the pageable and the
+     * total comes from countVisibleByCitizenId for the same visibility.
+     *
+     * LEFT JOIN FETCH assignedToUser + department so toCaseSummary never
+     * triggers lazy loads; both are to-one, so Hibernate still applies the
+     * LIMIT/OFFSET in SQL.
+     */
+    @Query("""
+        SELECT c
+        FROM Case c
+        LEFT JOIN FETCH c.assignedToUser
+        LEFT JOIN FETCH c.department
+        WHERE c.citizen.id = :citizenId
+          AND (:createdByUserId IS NULL OR c.createdByUser.id = :createdByUserId)
+          AND (:assignedToUserId IS NULL OR c.assignedToUser.id = :assignedToUserId)
+        ORDER BY c.updatedAt DESC, c.id DESC
+        """)
+    List<Case> findVisibleByCitizenIdOrderByUpdatedAtDesc(
+            @Param("citizenId") UUID citizenId,
+            @Param("createdByUserId") UUID createdByUserId,
+            @Param("assignedToUserId") UUID assignedToUserId,
+            Pageable pageable
+    );
+
     /**
      * Counts a citizen's cases grouped by status, applying the same
      * requester-visibility restriction as findVisibleByCitizenIdOrderByCreatedAtDesc.
@@ -128,6 +160,37 @@ public interface CaseRepository extends JpaRepository<Case, UUID>,
         """)
     long countVisibleByCitizenId(
             @Param("citizenId") UUID citizenId,
+            @Param("createdByUserId") UUID createdByUserId,
+            @Param("assignedToUserId") UUID assignedToUserId
+    );
+
+    // ── US-58: duplicate-candidate check for Citizen 360 case creation ──
+    /**
+     * The citizen's non-final cases that could be duplicates of a new case
+     * being created for the category/department being selected.
+     *
+     * Documented rule (docs/US-58-duplicate-case-rule.md):
+     *   - non-final = status NOT IN (RESOLVED, CLOSED, CANCELLED)
+     *   - "same or related category" = same category OR same department
+     *     (the category model is flat — no hierarchy)
+     *   - same requester-visibility restriction as the Citizen 360
+     *     recent-cases list, so the warning never surfaces a case the
+     *     requester could not open anyway.
+     */
+    @Query("""
+        SELECT c
+        FROM Case c
+        WHERE c.citizen.id = :citizenId
+          AND c.status NOT IN ('RESOLVED', 'CLOSED', 'CANCELLED')
+          AND (c.category.id = :categoryId OR c.department.id = :departmentId)
+          AND (:createdByUserId IS NULL OR c.createdByUser.id = :createdByUserId)
+          AND (:assignedToUserId IS NULL OR c.assignedToUser.id = :assignedToUserId)
+        ORDER BY c.createdAt DESC, c.id DESC
+        """)
+    List<Case> findNonFinalDuplicateCandidates(
+            @Param("citizenId") UUID citizenId,
+            @Param("categoryId") UUID categoryId,
+            @Param("departmentId") UUID departmentId,
             @Param("createdByUserId") UUID createdByUserId,
             @Param("assignedToUserId") UUID assignedToUserId
     );

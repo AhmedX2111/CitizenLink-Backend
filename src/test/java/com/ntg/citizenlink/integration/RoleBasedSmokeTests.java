@@ -345,4 +345,31 @@ class RoleBasedSmokeTests {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
     }
+
+    // ── US-48 AC3: ADMIN role negative-permission checks ───────────────────
+    // The other three roles already assert a denied action in their journey
+    // above (AGENT: 403 transition + 404 foreign case; HANDLER: 403 note edit
+    // + 404 unassigned case; SUPERVISOR: 403 /users). This is the ADMIN side:
+    // the lock-out guards that protect the ADMIN-only /users surface.
+
+    @Test
+    void adminNegativePermissionsSmokeTest() throws Exception {
+        // Self-deactivation is refused (400 + standard envelope) so the last
+        // active ADMIN can never be locked out by its own action.
+        String adminToken = login(admin.getUsername());
+        mockMvc.perform(put("/api/v1/users/{id}/deactivate", admin.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value("You cannot deactivate your own account"));
+
+        // The refused action must leave the account usable afterwards.
+        login(admin.getUsername());
+
+        // Authentication is still required on the admin surface (401 envelope).
+        mockMvc.perform(get("/api/v1/users"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.message").value("Authentication required"));
+    }
 }

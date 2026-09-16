@@ -4,9 +4,10 @@ import com.ntg.citizenlink.dto.agent.request.BulkReassignRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseSearchRequest;
 import com.ntg.citizenlink.dto.agent.request.CaseTransitionRequest;
 import com.ntg.citizenlink.dto.agent.request.CreateCaseRequest;
-import com.ntg.citizenlink.dto.agent.response.BulkReassignResponse;
+import com.ntg.citizenlink.dto.agent.request.CreateCitizenCaseRequest;
 import com.ntg.citizenlink.dto.agent.response.CaseActionResponse;
 import com.ntg.citizenlink.dto.agent.response.CaseResponse;
+import com.ntg.citizenlink.dto.agent.response.DuplicateCaseCandidateResponse;
 import com.ntg.citizenlink.dto.agent.response.PagedResponse;
 import com.ntg.citizenlink.dto.agent.response.StatusHistoryResponse;
 
@@ -20,6 +21,29 @@ public interface CaseService {
      * Creates a new case.
      */
     CaseResponse createCase(CreateCaseRequest request, UUID creatorId);
+
+    /**
+     * US-57: creates a new case for a specific citizen resolved by ID.
+     * Called from the Citizen 360 screen where the citizen is bound to
+     * the URL path and the request body carries no national ID, so the
+     * citizen's masked identity (US-56) is never needed and cannot be
+     * silently replaced. All other business rules (active category and
+     * department, privileged assignment gate, case numbering, audit
+     * history) are identical to {@link #createCase(CreateCaseRequest, UUID)}.
+     */
+    CaseResponse createCitizenCase(UUID citizenId, CreateCitizenCaseRequest request, UUID creatorId);
+
+    /**
+     * US-58: preflight check before creating a case from Citizen 360.
+     * Lists the citizen's non-final cases whose category or department
+     * matches the one being selected for the new case (documented rule —
+     * see docs/US-58-duplicate-case-rule.md). Results always carry the
+     * requester's normal case-visibility restriction, so the warning never
+     * surfaces a case the requester could not open anyway. Read-only and
+     * never blocks creation.
+     */
+    List<DuplicateCaseCandidateResponse> findDuplicateCandidates(UUID citizenId, UUID categoryId,
+                                                                 UUID departmentId, UUID requesterId);
 
     /**
      * Returns a paginated, filtered list of cases.

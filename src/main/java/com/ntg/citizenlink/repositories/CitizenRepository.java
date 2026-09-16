@@ -26,12 +26,15 @@ public interface CitizenRepository extends JpaRepository<Citizen, UUID> {
 
     Optional<Citizen> findByPhone(String phone);
 
-    // Search by partial name, full national ID, or phone
+    // Search by partial normalized name, full national ID, or normalized phone
     @Query("SELECT c FROM Citizen c WHERE " +
-            "LOWER(c.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+            "LOWER(c.fullNameNormalized) LIKE CONCAT('%', :normalizedTerm, '%') OR " +
             "c.nationalId = :searchTerm OR " +
-            "c.phone = :searchTerm")
-    Page<Citizen> searchCitizens(@Param("searchTerm") String searchTerm, Pageable pageable);
+            "c.phone = :phoneTerm")
+    Page<Citizen> searchCitizens(@Param("normalizedTerm") String normalizedTerm,
+                                  @Param("searchTerm") String searchTerm,
+                                  @Param("phoneTerm") String phoneTerm,
+                                  Pageable pageable);
 
     /**
      * Returns case counts grouped by citizen, for ALL citizen IDs given at once.
